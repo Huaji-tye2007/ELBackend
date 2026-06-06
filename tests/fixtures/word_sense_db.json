@@ -1,0 +1,65 @@
+{
+  "bank": {
+    "is_polysemous": true,
+    "senses": [
+      { "id": "bank_river", "meaning": "河岸" },
+      { "id": "bank_finance", "meaning": "银行" }
+    ]
+  },
+  "issue": {
+    "is_polysemous": true,
+    "senses": [
+      { "id": "issue_problem", "meaning": "问题" },
+      { "id": "issue_topic", "meaning": "议题" }
+    ]
+  },
+  "awkward": {
+    "is_polysemous": false,
+    "senses": [
+      { "id": "awkward_1", "meaning": "尴尬的" }
+    ]
+  },
+  "meticulous": {
+    "is_polysemous": false,
+    "senses": [
+      { "id": "meticulous_1", "meaning": "一丝不苟的" }
+    ]
+  },
+  "coherent": {
+    "is_polysemous": false,
+    "senses": [
+      { "id": "coherent_1", "meaning": "连贯的" }
+    ]
+  },
+  "invisible": {
+    "is_polysemous": false,
+    "senses": [
+      { "id": "invisible_1", "meaning": "隐形的" }
+    ]
+  },
+  "introduce": {
+    "is_polysemous": false,
+    "senses": [
+      { "id": "introduce_1", "meaning": "介绍" }
+    ]
+  },
+  "hesitate": {
+    "is_polysemous": false,
+    "senses": [
+      { "id": "hesitate_1", "meaning": "犹豫" }
+    ]
+  },
+  "glance": {
+    "is_polysemous": true,
+    "senses": [
+      { "id": "glance_look", "meaning": "一瞥" },
+      { "id": "glance_reflect", "meaning": "反光" }
+    ]
+  },
+  "resonate": {
+    "is_polysemous": false,
+    "senses": [
+      { "id": "resonate_1", "meaning": "共鸣" }
+    ]
+  }
+}

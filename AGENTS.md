@@ -11,16 +11,16 @@
 - **纯后端仓库**。前端用 Node 单独开发，本仓库只输出标准 FastAPI HTTP API。
 - **目前是 greenfield**：除文档和 `requirements.txt` 外没有任何源码。第一次写代码时需要自行决定包结构（建议 `app/` 或 `src/<pkg>/`，沿用 FastAPI 社区惯例）。
 - **设计真理之源**（动手前必读，按编号优先级）：
-  1. `product_analysis.md` — 产品定位、设计原则、核心循环。涉及交互/取舍时按此对齐。
-  2. `BACKEND_IN_OUT.md` — 系统架构 V1.5：数据流、9 个模块的输入/输出/职责、JSON 数据结构。**但 §6 FormatSpec 已作废，见下条**。
-  3. `format_spec_json.md` — 对话体小说 JSON 格式规范 v3（许家旗版），是前端消费 Episode 输出格式的**唯一 SoT**，完全取代 `BACKEND_IN_OUT.md` §6。
-- **设计变更同步约束（强制）**：任何架构/数据结构/模块边界的改动，必须同步更新涉及的 SoT 文档（`BACKEND_IN_OUT.md` / `format_spec_json.md` / `product_analysis.md`）、`AGENTS.md`、以及 `README.md`（若已创建）。文档与代码冲突时以代码为准并立即回写文档。
+  1. `documents/product_analysis.md` — 产品定位、设计原则、核心循环。涉及交互/取舍时按此对齐。
+  2. `documents/BACKEND_IN_OUT.md` — 系统架构 V1.5：数据流、9 个模块的输入/输出/职责、JSON 数据结构。**但 §6 FormatSpec 已作废，见下条**。
+  3. `documents/format_spec_json.md` — 对话体小说 JSON 格式规范 v3（许家旗版），是前端消费 Episode 输出格式的**唯一 SoT**，完全取代 `documents/BACKEND_IN_OUT.md` §6。
+- **设计变更同步约束（强制）**：任何架构/数据结构/模块边界的改动，必须同步更新涉及的 SoT 文档（`documents/BACKEND_IN_OUT.md` / `documents/format_spec_json.md` / `documents/product_analysis.md`）、`AGENTS.md`、以及 `README.md`（若已创建）。文档与代码冲突时以代码为准并立即回写文档。
 
 ## 2. 文档中的已知陷阱
 
-- **`BACKEND_IN_OUT.md` §6 `FormatSpec.json` 已作废**。该节红字标注"以许家旗的为准，不要看这个"——许家旗版即根目录的 `format_spec_json.md`。实现 `Episode Formatter` / `Vocabulary Annotator` / 任何前端消费格式相关代码时，**只读 `format_spec_json.md`**，忽略 §6。
-- `BACKEND_IN_OUT.md` §4 `Vocabulary Scheduler`：设计已冻结 (2026-06-06)，详见 `BACKEND_IN_OUT.md` §四.4。
-- `BACKEND_IN_OUT.md` 与 `format_spec_json.md` 对 lemma / 表层形式描述基本一致，但**以 `format_spec_json.md` §"词形匹配" 为最终口径**（指定了 ECDICT 方案）。
+- **`documents/BACKEND_IN_OUT.md` §6 `FormatSpec.json` 已作废**。该节红字标注"以许家旗的为准，不要看这个"——许家旗版即根目录的 `documents/format_spec_json.md`。实现 `Episode Formatter` / `Vocabulary Annotator` / 任何前端消费格式相关代码时，**只读 `documents/format_spec_json.md`**，忽略 §6。
+- `documents/BACKEND_IN_OUT.md` §4 `Vocabulary Scheduler`：设计已冻结 (2026-06-06)，详见 `documents/BACKEND_IN_OUT.md` §四.4。
+- `documents/BACKEND_IN_OUT.md` 与 `documents/format_spec_json.md` 对 lemma / 表层形式描述基本一致，但**以 `documents/format_spec_json.md` §"词形匹配" 为最终口径**（指定了 ECDICT 方案）。
 
 ## 3. Python 环境（Windows / PowerShell）
 
@@ -49,7 +49,7 @@
 | FSRS 调度     | **`fsrs`**（PyPI 包名是 `fsrs`，**不是** `pyfsrs`）       | 已装 (`fsrs 6.3.1`)。`import fsrs`，`fsrs.Card(**fsrs_card)`        |
 | LLM 编排      | `instructor`                                              | **未装**。安装后用结构化输出绑定 Pydantic                           |
 | 异步 Arc 生成 | 未定（候选：arq / RQ / Celery / FastAPI BackgroundTasks） | 未装。选型前与用户确认；**Celery 对 Windows 不友好**，arq/RQ 更轻量 |
-| 词形还原      | **`ecdict_mobile.db`**（SQLite，内置）                    | **数据库文件目前不在仓库**，需要用户提供；查询路径见 §6             |
+| 词形还原      | **`asset/ecdict_mobile.db`**（SQLite，内置）              | **数据库文件目前不在仓库**，需要用户提供；查询路径见 §6             |
 
 不要擅自引入其他 ORM、迁移工具、消息队列。**严禁**引入 `nltk` / `spacy` / `pyinflect` / `lemminflect` 等 lemmatizer——词形还原走 ECDICT。
 
@@ -60,7 +60,7 @@
 - **`is_new` 判定**：`fsrs_card.last_review == null` 且该 `item_id` 在本集尚未出现过。Annotator 需维护集内 `shown_in_this_episode` 集合。
 - **FSRS Card**：`fsrs_card` 内嵌对象与 `fsrs` 库的 `Card` 字段一一对应，可 `Card(**fsrs_card)` 还原。
 
-### FormatSpec（消费端输出，以 `format_spec_json.md` 为准）
+### FormatSpec（消费端输出，以 `documents/format_spec_json.md` 为准）
 - 顶层结构：`{ meta, messages, vocab }`。
 - `meta.kind`：`"main"`（主线）或 `"side"`（番外）。
 - `messages[i].type`：`"narration"` 或 `"dialogue"`。`narration` 涵盖所有非对话（动作 / 描写 / 内心）。
@@ -68,16 +68,22 @@
 - **`marks.index` 是按空格分词的 0-based 词索引**——例如 `"The bank said"` 中 `"bank"` 的 `index = 1`。**不是字符 offset**。Annotator 实现按 `text.split(" ")` 切分定位。
 - **`marks.word` 存表层形式**（屈折形态，如 `"consuming"` / `"consumed"`），不是 lemma。
 - **学习状态全部按 lemma 维度管理**（is_new、M 计数、FSRS card），不按表层形式。
+- **表层→Lemma→item_id 全链路**：
+  1. **StoryRewriter** 产出文本（含表层形式，不做 lemma 标注）
+  2. **VocabularyAnnotator** 定位目标词 → ECDICT 查 lemma → (lemma, meaning) 查 item_id → 填 marks.word=表层, marks.is_new=按 item_id 判定
+  3. **ReadingTracker** 收到点击事件 → 同样 ECDICT + meaning 映射到 item_id → 记录 behavior
+  4. **MasteryEvaluator** 按 item_id 更新 FSRS card（隐式反馈→history_window→Rating→review_card→强制跨天）
+  全程 lemma 映射唯一途径：ECDICT（`asset/ecdict_mobile.db`），**禁用**任何外部 lemmatizer。
 - `vocab` 数组可由 `messages[].marks` 推导，写出来仅为方便前端。
 
 ### 词形还原（ECDICT 方案，强制）
-- 唯一数据源：`ecdict_mobile.db`（SQLite，**需用户提供**，目前不在仓库）。
+- 唯一数据源：`asset/ecdict_mobile.db`（SQLite，**需用户提供**，目前不在仓库）。
 - 流程：遇到表层形式（如 `"went"`）→ 查 ECDICT 词条 → 若 `exchange` 字段含 `0:<lemma>`（如 `0:go`）则取该 lemma → 用 lemma 在 `UserVocabulary` 里查 `item_id`。
 - 若 `exchange` 为空或词条不存在，表层形式本身即原形。
 - **禁止**调用任何外部 lemmatizer 库。
 - 在内存建两个索引（加载时一次性构建）：
   - `vocab_index: item_id → VocabularyItem`（O(1) 查项）
-  - `lemma_index: lemma → item_id`（O(1) lemma → 学习对象）
+  - `lemma_index: (lemma, meaning) → item_id`（O(1) 复合键 → 学习对象）。对于非多义词 meaning 可省略；对于多义词（如 bank=河岸 / bank=银行），meaning 字段用于从同一 lemma 的多个 item_id 中精确定位。具体实现待 ECDICT 存储格式调研后确定。
 
 ## 7. 运行 / 开发命令（待项目骨架落地后回填）
 
@@ -90,9 +96,9 @@
 
 ## 8. 当一个 agent 接手时的优先级
 
-1. 读 `product_analysis.md` 的"设计原则"和"核心循环"，避免做出违背产品哲学的设计（**例：绝不要加打卡 / 红点 / 排行榜 / 缺席提醒**）。
-2. 读 `BACKEND_IN_OUT.md` 模块表（§四）找到要动的模块，确认其输入/输出 JSON 形状。
-3. 若动到前端消费格式相关代码，**只读 `format_spec_json.md`**，忽略 `BACKEND_IN_OUT.md` §6。
+1. 读 `documents/product_analysis.md` 的"设计原则"和"核心循环"，避免做出违背产品哲学的设计（**例：绝不要加打卡 / 红点 / 排行榜 / 缺席提醒**）。
+2. 读 `documents/BACKEND_IN_OUT.md` 模块表（§四）找到要动的模块，确认其输入/输出 JSON 形状。
+3. 若动到前端消费格式相关代码，**只读 `documents/format_spec_json.md`**，忽略 `documents/BACKEND_IN_OUT.md` §6。
 4. 激活 `.venv` 后再动手；新加依赖立即 `pip freeze > requirements.txt`。
 5. 改设计 → 同步更新对应 SoT + 本文件。
 
@@ -108,7 +114,7 @@ ELBackend/
 │   ├── core/
 │   │   ├── config.py                   # pydantic-settings：data_dir / ecdict_db_path / openai_*
 │   │   ├── dependencies.py             # FastAPI Depends 工厂（注入 service / storage / llm_client）
-│   │   └── exceptions.py               # 领域异常：NotFoundError / ValidationError / LLMError / GenerationConflictError / ECDictUnavailableError
+│   │   └── exceptions.py               # 领域异常：NotFoundError/ValidationError/LLMError/GenerationConflictError/ECDictUnavailableError
 │   ├── models/                         # 19 个 Pydantic v2 数据契约（详见 §12）
 │   │   ├── fsrs.py
 │   │   ├── vocabulary.py
@@ -151,6 +157,12 @@ ELBackend/
 │   │   └── test_*.py                   # 每个源文件对应一个测试文件
 │   └── integration/                    # 端到端测试（V1.5 暂留空目录）
 ├── scripts/                            # 开发脚本：生成 fixture / 清缓存 / dump 状态
+├── asset/                              # 二进制依赖（ECDICT 数据库等，不入库）
+│   └── ecdict_mobile.db               # SQLite，需用户提供，**不入库**
+├── documents/                          # 设计文档（SoT）
+│   ├── BACKEND_IN_OUT.md
+│   ├── product_analysis.md
+│   └── format_spec_json.md
 ├── data/                               # 运行时数据（.gitignore，不入库）
 │   ├── UserVocabulary.json
 │   ├── ChapterDB.json
@@ -160,8 +172,6 @@ ELBackend/
 ├── .vscode/
 ├── AGENTS.md
 ├── README.md
-├── BACKEND_IN_OUT.md product_analysis.md format_spec_json.md
-├── ecdict_mobile.db                    # SQLite，需用户提供，**不入库**
 ├── requirements.txt                    # 依赖列表，强制用 pip freeze 生成
 ├── pytest.ini                          # testpaths=tests / pythonpath=. / asyncio_mode=auto
 ├── ruff.toml                           # line-length=120 / target-version=py310 / select=E,F,W,I,UP,B,SIM
@@ -175,6 +185,8 @@ ELBackend/
 - `app/services/arc_generation_manager.py` 是**异步编排层**，不在 9 个业务模块之内（详见 §11、§14）。
 - `tests/` 目录结构**严格镜像** `app/`：`app/services/episode_formatter.py` → `tests/services/test_episode_formatter.py`。
 - `data/` 是运行时数据目录，必须在 `.gitignore`，**不入库**。
+- `asset/` 存放二进制依赖（如 ECDICT 数据库），不入库。
+- `documents/` 存放设计文档（SoT），是代码真理之源。
 
 ## 10. 前后端通信接口（V1.5 草案）
 
@@ -216,19 +228,19 @@ ELBackend/
 
 ## 11. 模块类映射
 
-### 9 个业务模块（与 `BACKEND_IN_OUT.md` §四一一对应）
+### 9 个业务模块（与 `documents/BACKEND_IN_OUT.md` §四一一对应）
 
-| #   | 类                       | 文件                                      | 核心方法                                                                          |
-| --- | ------------------------ | ----------------------------------------- | --------------------------------------------------------------------------------- |
-| 1   | `VocabularyPreprocessor` | `app/services/vocabulary_preprocessor.py` | `preprocess(raw_items: list[dict]) -> UserVocabulary`                             |
-| 2   | `NovelPreprocessor`      | `app/services/novel_preprocessor.py`      | `preprocess(title: str, raw_text: str) -> list[Chapter]`                          |
-| 3   | `ArcPlanner`             | `app/services/arc_planner.py`             | `plan_next_arc(progress, chapters, prev_arc) -> ArcPlan`                          |
-| 4   | `VocabularyScheduler`    | `app/services/vocabulary_scheduler/`    | `schedule(arc_plan: dict, user_vocab: dict, now: datetime | None = None) -> dict` |
-| 5   | `StoryRewriter`          | `app/services/story_rewriter.py`          | `rewrite_episode(target_words, chapter_slice) -> tuple[list[Message], list[str]]` |
-| 6   | `VocabularyAnnotator`    | `app/services/vocabulary_annotator.py`    | `annotate(messages, target_words, shown_set) -> list[Message]`                    |
-| 7   | `EpisodeFormatter`       | `app/services/episode_formatter.py`       | `format_episode(meta, messages, vocab) -> Episode`                                |
-| 8   | `ReadingTracker`         | `app/services/reading_tracker.py`         | `track(episode_log) -> ReadingProgress`                                           |
-| 9   | `MasteryEvaluator`       | `app/services/mastery_evaluator.py`       | `evaluate(episode_log, user_vocab) -> UserVocabulary`                             |
+| #   | 类                       | 文件                                      | 核心方法                                                                                                                              |
+| --- | ------------------------ | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | `VocabularyPreprocessor` | `app/services/vocabulary_preprocessor.py` | `preprocess(raw_items: list[dict]) -> UserVocabulary`                                                                                 |
+| 2   | `NovelPreprocessor`      | `app/services/novel_preprocessor.py`      | `preprocess(title: str, raw_text: str) -> list[Chapter]`                                                                              |
+| 3   | `ArcPlanner`             | `app/services/arc_planner.py`             | `plan_next_arc(progress, chapters, prev_arc) -> ArcPlan`                                                                              |
+| 4   | `VocabularyScheduler`    | `app/services/vocabulary_scheduler/`      | `schedule(arc_plan: dict, user_vocab: dict, now: datetime                                                                             | None = None) -> dict` |
+| 5   | `StoryRewriter`          | `app/services/story_rewriter.py`          | `rewrite_episode(target_words, chapter_slice) -> tuple[list[Message], list[str]]`（Message.text 含表层形式，不做 lemma 标注；marks 由 Annotator 后补）|
+| 6   | `VocabularyAnnotator`    | `app/services/vocabulary_annotator.py`    | `annotate(messages, target_words, shown_set) -> list[Message]`                                                                        |
+| 7   | `EpisodeFormatter`       | `app/services/episode_formatter.py`       | `format_episode(meta, messages, vocab) -> Episode`                                                                                    |
+| 8   | `ReadingTracker`         | `app/services/reading_tracker.py`         | `track(episode_log) -> ReadingProgress`                                                                                               |
+| 9   | `MasteryEvaluator`       | `app/services/mastery_evaluator.py`       | `evaluate(episode_log: EpisodeReadingLog, user_vocab: dict) -> dict`（隐式反馈→history_window 评分→FSRS review_card，含跨日强制机制） |
 
 ### VocabularyScheduler 设计（2026-06-06 冻结）
 
@@ -283,7 +295,7 @@ ELBackend/
 
 ## 12. 数据契约（Pydantic 模型规划）
 
-19 个 Pydantic v2 模型分布在 9 个文件。命名以 `BACKEND_IN_OUT.md` §三 与 `format_spec_json.md` 为准。
+19 个 Pydantic v2 模型分布在 9 个文件。命名以 `documents/BACKEND_IN_OUT.md` §三 与 `documents/format_spec_json.md` 为准。
 
 | 文件                           | 模型                                                                           | 关键约束                                                                                                                                                                                                                                                                                |
 | ------------------------------ | ------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -310,7 +322,7 @@ ELBackend/
 def lookup_lemma(surface: str, db: sqlite3.Connection) -> str: ...
 ```
 
-- 查 `ecdict_mobile.db` 的 `exchange` 字段，找到 `0:<lemma>` 则返回 lemma
+- 查 `asset/ecdict_mobile.db` 的 `exchange` 字段，找到 `0:<lemma>` 则返回 lemma
 - 若 db 不存在 → 抛 `ECDictUnavailableError`，由路由层翻译为 HTTP 503
 - 若 word 不在词典或无 `0:` 标记 → 返回 surface 本身
 - **禁止**调用任何外部 lemmatizer（NLTK / spaCy / pyinflect / lemminflect）
@@ -419,7 +431,7 @@ IDLE
 
 ### 14.7 监控
 - 监控接口即 `GET /api/v1/arc/status`
-- 前端可在阅读界面底部显示一条细线："下一段故事生成中…"（符合 `product_analysis.md` 设计原则 #1，不打扰用户）
+- 前端可在阅读界面底部显示一条细线："下一段故事生成中…"（符合 `documents/product_analysis.md` 设计原则 #1，不打扰用户）
 - 不引入 Prometheus / 监控 dashboard（V1.5 单机不需要）
 
 ### 14.8 迁移到 Taskiq 的接口边界
@@ -486,7 +498,7 @@ IDLE
 ### 15.3 FastAPI / 异步约束
 
 - **service 类不直接调 LLM / 文件 IO**：通过 `__init__` 注入依赖（`llm_client`、`storage`、`settings`），方便 mock。
-- **service body 在骨架阶段抛 `NotImplementedError("TODO: 见 BACKEND_IN_OUT.md §四.<N>")`**，方便测试用 `pytest.raises` 包裹占位。
+- **service body 在骨架阶段抛 `NotImplementedError("TODO: 见 documents/BACKEND_IN_OUT.md §四.<N>")`**，方便测试用 `pytest.raises` 包裹占位。
 - **FastAPI 路由的依赖通过 `Depends` 注入**（依赖工厂在 `app/core/dependencies.py`）。
 - **JSON 持久化必须用 `app/utils/atomic_io.atomic_write_json`**，禁止直接 `f.write(json.dumps(...))`。
 
@@ -558,7 +570,7 @@ IDLE
 ### 16.7 Pydantic 模型测试
 
 - 19 个模型每个至少 3 个测试：`valid_minimal`、`valid_full`、`invalid` (`pytest.raises(ValidationError)`)
-- 用 `format_spec_json.md` 的完整 Episode 示例做一次 `Episode.model_validate(...)` 必须通过
+- 用 `documents/format_spec_json.md` 的完整 Episode 示例做一次 `Episode.model_validate(...)` 必须通过
 - 用真实 `fsrs.Card(**fsrs_card_dict)` 还原一次，验证字段一一对应
 
 ### 16.8 异步与 API 测试
@@ -599,7 +611,7 @@ IDLE
    .ruff_cache/
    data/
    .env
-   ecdict_mobile.db
+   asset/ecdict_mobile.db
    ```
 3. 首次 commit：`chore: initial commit (docs + AGENTS.md + requirements.txt)`
 

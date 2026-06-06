@@ -1,0 +1,60 @@
+{
+  "meta": {
+    "ep": 30,
+    "title": "Beneath the Cherry Tree",
+    "kind": "main"
+  },
+  "messages": [
+    {
+      "type": "narration",
+      "text": "The cherry blossoms drifted down like pink snow, catching the golden light of the setting sun.",
+      "marks": []
+    },
+    {
+      "type": "dialogue",
+      "side": "left",
+      "name": "Mei",
+      "text": "Kazuhiko... I need to tell you something.",
+      "marks": []
+    },
+    {
+      "type": "narration",
+      "text": "Her voice was barely a whisper, trembling with an emotion I could not quite name. The solitary figure beneath the ancient tree looked impossibly small, impossibly fragile.",
+      "marks": [
+        { "word": "whisper", "index": 5, "definition": "耳语", "is_new": false },
+        { "word": "solitary", "index": 15, "definition": "孤独的", "is_new": false }
+      ]
+    },
+    {
+      "type": "dialogue",
+      "side": "right",
+      "name": "Kazuhiko",
+      "text": "I'm listening.",
+      "marks": []
+    },
+    {
+      "type": "dialogue",
+      "side": "left",
+      "name": "Mei",
+      "text": "Do you ever feel like some moments are just... ephemeral? Like no matter how hard you try to hold onto them, they slip through your fingers?",
+      "marks": [
+        { "word": "ephemeral", "index": 10, "definition": "短暂的", "is_new": false }
+      ]
+    },
+    {
+      "type": "narration",
+      "text": "Her words resonated somewhere deep inside me. I knew exactly what she meant, but the memory of that summer day felt too distant, too ambiguous to put into words.",
+      "marks": [
+        { "word": "resonate", "index": 2, "definition": "共鸣", "is_new": false },
+        { "word": "ambiguous", "index": 25, "definition": "模糊的", "is_new": false }
+      ]
+    }
+  ],
+  "vocab": [
+    { "word": "whisper", "definition": "耳语", "is_new": false },
+    { "word": "solitary", "definition": "孤独的", "is_new": false },
+    { "word": "ephemeral", "definition": "短暂的", "is_new": false },
+    { "word": "resonate", "definition": "共鸣", "is_new": false },
+    { "word": "ambiguous", "definition": "模糊的", "is_new": false }
+  ]
+}

@@ -1,0 +1,143 @@
+{
+  "arc_id": 2,
+  "pending_words": [
+    {"item_id": "meticulous_1", "rejected_count": 3},
+    {"item_id": "coherent_1", "rejected_count": 3},
+    {"item_id": "ambiguous_1", "rejected_count": 3},
+    {"item_id": "ephemeral_1", "rejected_count": 4},
+    {"item_id": "reluctant_1", "rejected_count": 3},
+    {"item_id": "nostalgia_1", "rejected_count": 3}
+  ],
+  "episodes": [
+    {
+      "episode_id": 21,
+      "episode_type": "main",
+      "source_text": "The classroom buzzed with morning chatter as students filtered in, their voices overlapping like a discordant symphony. Sensei Tanaka stood at the podium, adjusting his glasses with a familiar gesture that everyone recognized.",
+      "previous_context": [],
+      "target_words": [
+        {"item_id": "awkward_1", "word": "awkward", "meaning": "尴尬的", "is_new": true},
+        {"item_id": "glance_look", "word": "glance", "meaning": "一瞥", "is_new": true}
+      ]
+    },
+    {
+      "episode_id": 22,
+      "episode_type": "main",
+      "source_text": "Anna leaned across the aisle, her pen tapping against my desk in an irregular rhythm. 'You know,' she whispered, 'you could at least pretend to be interested.'",
+      "previous_context": [
+        {"name": "Anna", "text": "Hey, new guy. Over here."},
+        {"name": "Kazuhiko", "text": "...Thanks."}
+      ],
+      "target_words": [
+        {"item_id": "footstep_1", "word": "footstep", "meaning": "脚步", "is_new": false},
+        {"item_id": "whisper_1", "word": "whisper", "meaning": "耳语", "is_new": false},
+        {"item_id": "invisible_1", "word": "invisible", "meaning": "隐形的", "is_new": false}
+      ]
+    },
+    {
+      "episode_id": 23,
+      "episode_type": "main",
+      "source_text": "The corridor stretched before me like a tunnel from a dream — too long, too narrow, the fluorescent lights humming with a sound that made my teeth ache.",
+      "previous_context": [
+        {"name": "Anna", "text": "Don't be so nervous. Everyone here is pretty friendly."},
+        {"name": "Kazuhiko", "text": "I'll... try to remember that."}
+      ],
+      "target_words": [
+        {"item_id": "corridor_1", "word": "corridor", "meaning": "走廊", "is_new": false},
+        {"item_id": "solitary_1", "word": "solitary", "meaning": "孤独的", "is_new": false}
+      ]
+    },
+    {
+      "episode_id": 24,
+      "episode_type": "main",
+      "source_text": "The library was a cathedral of silence, dust motes dancing in the slanted afternoon light. Mei sat at the far table, her fingers tracing the spine of a book with meticulous care.",
+      "previous_context": [
+        {"name": "Kazuhiko", "text": "Is this seat taken?"}
+      ],
+      "target_words": [
+        {"item_id": "discreet_1", "word": "discreet", "meaning": "谨慎的", "is_new": false},
+        {"item_id": "meticulous_1", "word": "meticulous", "meaning": "一丝不苟的", "is_new": true},
+        {"item_id": "murmur_1", "word": "murmur", "meaning": "低语", "is_new": true}
+      ]
+    },
+    {
+      "episode_id": 25,
+      "episode_type": "main",
+      "source_text": "Mei looked up from her book, her eyes meeting mine for a fraction of a second before returning to the page. The silence between us felt heavier than words.",
+      "previous_context": [
+        {"name": "Mei", "text": "No. Go ahead."}
+      ],
+      "target_words": [
+        {"item_id": "hesitate_1", "word": "hesitate", "meaning": "犹豫", "is_new": true},
+        {"item_id": "ambiguous_1", "word": "ambiguous", "meaning": "模糊的", "is_new": false}
+      ]
+    },
+    {
+      "episode_id": 26,
+      "episode_type": "main",
+      "source_text": "Sensei Tanaka's voice droned on about gravitational constants and orbital mechanics, but my mind was elsewhere — replaying the brief exchange in the library, searching for hidden meanings in her words.",
+      "previous_context": [
+        {"name": "Kazuhiko", "text": "What are you reading?"},
+        {"name": "Mei", "text": "Just a novel. Nothing special."}
+      ],
+      "target_words": [
+        {"item_id": "inevitable_1", "word": "inevitable", "meaning": "不可避免的", "is_new": false},
+        {"item_id": "coherent_1", "word": "coherent", "meaning": "连贯的", "is_new": true},
+        {"item_id": "anxious_1", "word": "anxious", "meaning": "焦虑的", "is_new": true}
+      ]
+    },
+    {
+      "episode_id": 27,
+      "episode_type": "main",
+      "source_text": "Anna cornered me by the vending machines during lunch break. Her expression was unreadable — somewhere between concern and amusement.",
+      "previous_context": [
+        {"name": "Anna", "text": "I saw you in the library yesterday."},
+        {"name": "Kazuhiko", "text": "I was just studying."}
+      ],
+      "target_words": [
+        {"item_id": "introduce_1", "word": "introduce", "meaning": "介绍", "is_new": false},
+        {"item_id": "nostalgia_1", "word": "nostalgia", "meaning": "怀旧", "is_new": false}
+      ]
+    },
+    {
+      "episode_id": 28,
+      "episode_type": "main",
+      "source_text": "The rooftop was off-limits, which made it the perfect place to be alone. Except today, someone had beaten me to it. Mei stood by the railing, her hair catching the wind like black silk.",
+      "previous_context": [
+        {"name": "Anna", "text": "Be careful with Mei. She's... complicated."}
+      ],
+      "target_words": [
+        {"item_id": "reluctant_1", "word": "reluctant", "meaning": "不情愿的", "is_new": true},
+        {"item_id": "resonate_1", "word": "resonate", "meaning": "共鸣", "is_new": false},
+        {"item_id": "discreet_1", "word": "discreet", "meaning": "谨慎的", "is_new": true}
+      ]
+    },
+    {
+      "episode_id": 29,
+      "episode_type": "main",
+      "source_text": "She didn't turn around when she spoke, her voice carried backward by the breeze. 'I knew you would come up here eventually. It's where all the solitary people go.'",
+      "previous_context": [
+        {"name": "Kazuhiko", "text": "Sorry, I didn't know anyone was here."},
+        {"name": "Mei", "text": "Stay. The view is better with company."}
+      ],
+      "target_words": [
+        {"item_id": "ephemeral_1", "word": "ephemeral", "meaning": "短暂的", "is_new": false},
+        {"item_id": "solitary_1", "word": "solitary", "meaning": "孤独的", "is_new": false},
+        {"item_id": "inevitable_1", "word": "inevitable", "meaning": "不可避免的", "is_new": true}
+      ]
+    },
+    {
+      "episode_id": 30,
+      "episode_type": "main",
+      "source_text": "Under the cherry tree after school, the petals fell around us like a silent benediction. Mei turned to face me, and for the first time, her expression was completely unguarded.",
+      "previous_context": [
+        {"name": "Mei", "text": "Kazuhiko... I need to tell you something."},
+        {"name": "Kazuhiko", "text": "I'm listening."}
+      ],
+      "target_words": [
+        {"item_id": "nostalgia_1", "word": "nostalgia", "meaning": "怀旧", "is_new": true},
+        {"item_id": "whisper_1", "word": "whisper", "meaning": "耳语", "is_new": false},
+        {"item_id": "meticulous_1", "word": "meticulous", "meaning": "一丝不苟的", "is_new": false}
+      ]
+    }
+  ]
+}

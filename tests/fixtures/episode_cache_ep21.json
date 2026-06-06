@@ -1,0 +1,60 @@
+{
+  "meta": {
+    "ep": 21,
+    "title": "The Transfer Student",
+    "kind": "main"
+  },
+  "messages": [
+    {
+      "type": "narration",
+      "text": "The classroom buzzed with morning chatter. Everyone was talking about the transfer student.",
+      "marks": [
+        { "word": "awkward", "index": 0, "definition": "尴尬的", "is_new": true }
+      ]
+    },
+    {
+      "type": "dialogue",
+      "side": "left",
+      "name": "Anna",
+      "text": "Hey, new guy. Over here. There's an empty seat next to me.",
+      "marks": []
+    },
+    {
+      "type": "narration",
+      "text": "I stood frozen in the doorway, feeling every pair of eyes on me. My footsteps echoed through the silent corridor.",
+      "marks": [
+        { "word": "footstep", "index": 15, "definition": "脚步", "is_new": false },
+        { "word": "corridor", "index": 18, "definition": "走廊", "is_new": false }
+      ]
+    },
+    {
+      "type": "dialogue",
+      "side": "right",
+      "name": "Kazuhiko",
+      "text": "...Thanks.",
+      "marks": []
+    },
+    {
+      "type": "dialogue",
+      "side": "left",
+      "name": "Anna",
+      "text": "Don't be so nervous. Everyone here is pretty friendly. Well, mostly.",
+      "marks": []
+    },
+    {
+      "type": "narration",
+      "text": "She glanced at me with a knowing smile, as if she understood exactly how invisible I wanted to be right now.",
+      "marks": [
+        { "word": "glance", "index": 1, "definition": "一瞥", "is_new": true },
+        { "word": "invisible", "index": 17, "definition": "隐形的", "is_new": false }
+      ]
+    }
+  ],
+  "vocab": [
+    { "word": "awkward", "definition": "尴尬的", "is_new": true },
+    { "word": "footstep", "definition": "脚步", "is_new": false },
+    { "word": "corridor", "definition": "走廊", "is_new": false },
+    { "word": "glance", "definition": "一瞥", "is_new": true },
+    { "word": "invisible", "definition": "隐形的", "is_new": false }
+  ]
+}

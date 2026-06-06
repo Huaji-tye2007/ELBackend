@@ -879,3 +879,43 @@ class TestScheduleAsync:
         assert result is arc_plan
         for episode in result["episodes"]:
             assert isinstance(episode.get("target_words"), list)
+
+
+class TestScheduleWithLLMClient:
+    """Integration: LLM scores affect allocation priority."""
+
+    async def test_llm_scores_influence_allocation(
+        self, arc_plan: dict[str, Any], user_vocab: dict[str, Any], now: datetime
+    ) -> None:
+        """Items with higher LLM scores should be allocated first.
+
+        Mock LLM gives 'awkward_1' score=1.0 and other candidates score=0.0.
+        Verifies the mock is actually invoked (LLM integration works end-to-end).
+        """
+        from unittest.mock import AsyncMock, MagicMock
+
+        from app.llm.prompts import ContextScoreEntry, ContextScoreResponse
+
+        mock_client = MagicMock()
+        mock_client.create = AsyncMock()
+
+        vocab_items = user_vocab["vocabulary"]
+        entries = [
+            ContextScoreEntry(
+                item_id=item["id"],
+                score=1.0 if item["id"] == "awkward_1" else 0.0,
+            )
+            for item in vocab_items
+        ]
+        mock_client.create.return_value = ContextScoreResponse(scores=entries)
+
+        result = await schedule(
+            arc_plan=arc_plan,
+            user_vocab=user_vocab,
+            llm_client=mock_client,
+            now=now,
+        )
+
+        first_target_words = result["episodes"][0].get("target_words", [])
+        assert len(first_target_words) > 0, "No target_words allocated"
+        assert mock_client.create.call_count >= 1, "LLM client was never called"

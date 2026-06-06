@@ -3,8 +3,9 @@
 Provides two public functions used by the scheduler pipeline:
 
 - ``score_context``: assigns a context-fit score per candidate based on the
-  source text of an episode.  LLM-based scoring is dependency-injected; the
-  MVP implementation returns a neutral 0.5 for every candidate.
+  source text of an episode.  When an LLM client is injected and source text
+  is available, uses the LLM to rank candidates; otherwise falls back to a
+  neutral 0.5 for every candidate.
 
 - ``final_score``: combines context-fit with FSRS urgency (for review items)
   or a fixed base weight (for unseen items) into a single 0.0–1.0 score.
@@ -14,6 +15,8 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Any
+
+from app.llm.prompts import ContextScoreResponse, make_scoring_prompt
 
 
 def _parse_due(item: dict[str, Any]) -> datetime:
@@ -53,24 +56,25 @@ def _compute_urgency(due_date: datetime, now: datetime) -> float:
     return min(1.0, overdue_days / 30.0)
 
 
-def score_context(
+async def score_context(
     source_text: str | None,
     candidates: list[dict[str, Any]],
     llm_client: Any = None,
 ) -> dict[str, float]:
     """Assign a context-fit score (0.0–1.0) to each vocabulary candidate.
 
-    In the MVP, scoring is neutral (0.5 for every candidate).  When a real
-    LLM client is injected in a future version, this function will use it
-    to rank candidates by how well they fit ``source_text``.
+    When both ``source_text`` and ``llm_client`` are provided, the LLM ranks
+    candidates by how well they fit the source text.  Otherwise, every
+    candidate receives a neutral 0.5.
 
     Args:
         source_text: The episode's source text (chapter slice), or ``None``
             for side episodes that lack context.
         candidates: List of candidate vocabulary items, each containing at
             least an ``"id"`` key.
-        llm_client: Optional LLM client for contextual scoring (ignored in
-            MVP — all candidates receive 0.5).
+        llm_client: Optional LLM client with an async ``create()`` method that
+            accepts ``messages`` and ``response_model``.  When ``None``, all
+            candidates receive 0.5.
 
     Returns:
         A dict mapping ``item_id`` → context score (0.0–1.0).
@@ -78,10 +82,38 @@ def score_context(
     if not candidates:
         return {}
 
-    # MVP: always return neutral 0.5 regardless of source_text or llm_client.
-    # Future implementation will call llm_client when both source_text and
-    # llm_client are provided.
-    return {item["id"]: 0.5 for item in candidates}
+    # Fallback when source_text or llm_client is missing.
+    if source_text is None or llm_client is None:
+        return {item["id"]: 0.5 for item in candidates}
+
+    # Build id→score lookup for LLM results.
+    try:
+        prompt = make_scoring_prompt(source_text, candidates)
+        response = await llm_client.create(
+            messages=prompt,
+            response_model=ContextScoreResponse,
+        )
+    except Exception:
+        # Any LLM failure → fall back to neutral scores.
+        return {item["id"]: 0.5 for item in candidates}
+
+    # Parse LLM response into a lookup dict, applying safety filters.
+    candidate_ids = {item["id"] for item in candidates}
+    llm_scores: dict[str, float] = {}
+
+    for entry in response.scores:
+        # Skip hallucinated item_ids not in the candidate set.
+        if entry.item_id not in candidate_ids:
+            continue
+        # Clamp score to [0.0, 1.0].
+        llm_scores[entry.item_id] = max(0.0, min(1.0, entry.score))
+
+    # Default to 0.5 for any candidate the LLM omitted.
+    result: dict[str, float] = {}
+    for item in candidates:
+        result[item["id"]] = llm_scores.get(item["id"], 0.5)
+
+    return result
 
 
 def final_score(item: dict[str, Any], context_score: float, now: datetime) -> float:

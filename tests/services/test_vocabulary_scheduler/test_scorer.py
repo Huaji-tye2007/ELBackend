@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from unittest import mock
 
 import pytest
 
+from app.llm.prompts import ContextScoreEntry, ContextScoreResponse
 from app.services.vocabulary_scheduler.scorer import (
     _compute_urgency,
     _parse_due,
@@ -45,28 +47,119 @@ def _make_item(
 class TestScoreContext:
     """Tests for ``score_context()`` – the context-fit scoring function."""
 
-    def test_source_text_none(self):
+    async def test_source_text_none(self):
         """When source_text is None, every candidate gets 0.5."""
-        result = score_context(None, [{"id": "a"}, {"id": "b"}])
+        result = await score_context(None, [{"id": "a"}, {"id": "b"}])
         assert result == {"a": 0.5, "b": 0.5}
 
-    def test_with_source_no_llm(self):
+    async def test_with_source_no_llm(self):
         """Without an LLM client, all candidates still get 0.5 (fallback)."""
-        result = score_context("Some source text", [{"id": "a"}])
+        result = await score_context("Some source text", [{"id": "a"}])
         assert result == {"a": 0.5}
 
-    def test_empty_candidates(self):
+    async def test_empty_candidates(self):
         """An empty candidate list returns an empty dict."""
-        assert score_context("text", []) == {}
-        assert score_context(None, []) == {}
+        assert await score_context("text", []) == {}
+        assert await score_context(None, []) == {}
 
-    def test_llm_injected(self):
-        """Interface accepts llm_client; MVP still returns 0.5 for all."""
-        mock_client = object()  # minimal stand-in
-        result = score_context(
-            "Some text", [{"id": "x"}, {"id": "y"}], llm_client=mock_client
+    async def test_llm_client_fallback_when_no_source(self):
+        """LLM client is ignored when source_text is None → 0.5 fallback."""
+        mock_client = mock.AsyncMock()
+        result = await score_context(
+            None, [{"id": "x"}, {"id": "y"}], llm_client=mock_client
         )
         assert result == {"x": 0.5, "y": 0.5}
+        mock_client.create.assert_not_called()
+
+    async def test_llm_client_success(self):
+        """LLM client returns scores → parsed and clamped correctly."""
+        mock_client = mock.AsyncMock()
+        mock_client.create.return_value = ContextScoreResponse(
+            scores=[
+                ContextScoreEntry(item_id="a", score=0.9, reasoning="great fit"),
+                ContextScoreEntry(item_id="b", score=0.3, reasoning="poor fit"),
+            ]
+        )
+        result = await score_context(
+            "source text about nature",
+            [
+                {"id": "a", "word": "tree", "meaning": "树"},
+                {"id": "b", "word": "rocket", "meaning": "火箭"},
+            ],
+            llm_client=mock_client,
+        )
+        assert result == {"a": 0.9, "b": 0.3}
+        mock_client.create.assert_called_once()
+
+    async def test_llm_clamps_out_of_range_scores(self):
+        """Scores outside [0.0, 1.0] are clamped (simulates LLM bypassing Pydantic)."""
+        mock_client = mock.AsyncMock()
+        # Use model_construct() to bypass Pydantic validation — real LLM may output
+        # values slightly outside [0,1] due to floating-point or model quirks.
+        entry_a = ContextScoreEntry.model_construct(item_id="a", score=1.5)
+        entry_b = ContextScoreEntry.model_construct(item_id="b", score=-0.5)
+        mock_client.create.return_value = ContextScoreResponse.model_construct(
+            scores=[entry_a, entry_b],
+        )
+        result = await score_context(
+            "text",
+            [
+                {"id": "a", "word": "w1", "meaning": "m1"},
+                {"id": "b", "word": "w2", "meaning": "m2"},
+            ],
+            llm_client=mock_client,
+        )
+        assert result == {"a": 1.0, "b": 0.0}
+
+    async def test_llm_missing_candidate_defaults_to_0_5(self):
+        """Candidates omitted by LLM get default 0.5."""
+        mock_client = mock.AsyncMock()
+        mock_client.create.return_value = ContextScoreResponse(
+            scores=[
+                ContextScoreEntry(item_id="a", score=0.8, reasoning="ok"),
+            ]
+        )
+        result = await score_context(
+            "text",
+            [
+                {"id": "a", "word": "w1", "meaning": "m1"},
+                {"id": "b", "word": "w2", "meaning": "m2"},
+            ],
+            llm_client=mock_client,
+        )
+        assert result == {"a": 0.8, "b": 0.5}
+
+    async def test_llm_hallucinated_ids_ignored(self):
+        """LLM returns ids not in candidates → ignored."""
+        mock_client = mock.AsyncMock()
+        mock_client.create.return_value = ContextScoreResponse(
+            scores=[
+                ContextScoreEntry(item_id="a", score=0.8, reasoning="ok"),
+                ContextScoreEntry(item_id="ghost", score=1.0, reasoning="hallucinated"),
+            ]
+        )
+        result = await score_context(
+            "text",
+            [{"id": "a", "word": "w1", "meaning": "m1"}],
+            llm_client=mock_client,
+        )
+        assert result == {"a": 0.8}
+        assert "ghost" not in result
+
+    async def test_llm_exception_falls_back_to_0_5(self):
+        """Any LLM exception → all candidates get 0.5."""
+        mock_client = mock.AsyncMock()
+        mock_client.create.side_effect = RuntimeError("LLM API down")
+
+        result = await score_context(
+            "text",
+            [
+                {"id": "a", "word": "w1", "meaning": "m1"},
+                {"id": "b", "word": "w2", "meaning": "m2"},
+            ],
+            llm_client=mock_client,
+        )
+        assert result == {"a": 0.5, "b": 0.5}
 
 
 # ---------------------------------------------------------------------------

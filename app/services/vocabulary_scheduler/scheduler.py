@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import Any
 
 from app.services.vocabulary_scheduler.pools import apply_pending_overlay, build_pools
 from app.services.vocabulary_scheduler.scorer import final_score, score_context
@@ -17,6 +18,7 @@ async def schedule(
     user_vocab: dict,
     now: datetime | None = None,
     episode_limit: int = 10,
+    llm_client: Any = None,
 ) -> dict:
     """Schedule vocabulary for all episodes in an arc plan.
 
@@ -32,6 +34,7 @@ async def schedule(
         user_vocab: UserVocabulary dict with "vocabulary" key containing list of item dicts.
         now: Reference datetime. Defaults to UTC now if None.
         episode_limit: Max new words AND max review words per episode (default 10).
+        llm_client: Optional LLM client for contextual scoring. When None, falls back to 0.5 for all candidates.
 
     Returns:
         Updated arc_plan dict with each episode's "target_words" list populated.
@@ -65,7 +68,9 @@ async def schedule(
 
         # Score context for all candidates
         all_candidates = unseen_batch + review_batch
-        context_scores: dict[str, float] = score_context(source_text, all_candidates)
+        context_scores: dict[str, float] = await score_context(
+            source_text, all_candidates, llm_client
+        )
 
         # Compute final scores for unseen candidates
         unseen_scored: list[tuple[float, dict]] = []

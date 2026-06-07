@@ -7,6 +7,7 @@ anyio==4.13.0
 async-timeout==5.0.1
 attrs==26.1.0
 backports.asyncio.runner==1.2.0
+basedpyright==1.39.6
 certifi==2026.5.20
 charset-normalizer==3.4.7
 click==8.4.1
@@ -31,6 +32,7 @@ markdown-it-py==4.2.0
 MarkupSafe==3.0.3
 mdurl==0.1.2
 multidict==6.7.1
+nodejs-wheel-binaries==24.16.0
 openai==2.41.0
 packaging==26.2
 pluggy==1.6.0

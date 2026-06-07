@@ -9,7 +9,7 @@
 ## 1. 仓库定位
 
 - **纯后端仓库**。前端用 Node 单独开发，本仓库只输出标准 FastAPI HTTP API。
-- **目前是 greenfield**：除文档和 `requirements.txt` 外没有任何源码。第一次写代码时需要自行决定包结构（建议 `app/` 或 `src/<pkg>/`，沿用 FastAPI 社区惯例）。
+- **代码已落地**（截至 2026-06-07）：采用 `app/` 包结构。实际规模：20+ Pydantic 模型、14 个 service 类/包、15 个 API 端点、560 个测试。部分模块仍为骨架（stub），详见 §9 标注。
 - **设计真理之源**（动手前必读，按编号优先级）：
   1. `documents/product_analysis.md` — 产品定位、设计原则、核心循环。涉及交互/取舍时按此对齐。
   2. `documents/BACKEND_IN_OUT.md` — 系统架构 V1.5：数据流、9 个模块的输入/输出/职责、JSON 数据结构。**但 §6 FormatSpec 已作废，见下条**。
@@ -47,8 +47,8 @@
 | Web 框架      | FastAPI + Uvicorn                                         | 已装 (`fastapi 0.136.3`, `uvicorn 0.48.0`)                          |
 | 数据模型      | Pydantic v2                                               | 已装 (`pydantic 2.13.4`)                                            |
 | FSRS 调度     | **`fsrs`**（PyPI 包名是 `fsrs`，**不是** `pyfsrs`）       | 已装 (`fsrs 6.3.1`)。`import fsrs`，`fsrs.Card(**fsrs_card)`        |
-| LLM 编排      | `instructor`                                              | **未装**。安装后用结构化输出绑定 Pydantic                           |
-| 异步 Arc 生成 | 未定（候选：arq / RQ / Celery / FastAPI BackgroundTasks） | 未装。选型前与用户确认；**Celery 对 Windows 不友好**，arq/RQ 更轻量 |
+| LLM 编排      | `instructor`                                              | 已装 (`instructor 1.15.1`)，结构化输出绑定 Pydantic                 |
+| 异步 Arc 生成 | `asyncio` + JSON checkpoint 状态机                        | 已落地。`ArcGenerationManager`（§14），MVP 阶段不引入外部消息队列   |
 | 词形还原      | **`asset/ecdict_mobile.db`**（SQLite，内置）              | **数据库文件目前不在仓库**，需要用户提供；查询路径见 §6             |
 
 不要擅自引入其他 ORM、迁移工具、消息队列。**严禁**引入 `nltk` / `spacy` / `pyinflect` / `lemminflect` 等 lemmatizer——词形还原走 ECDICT。
@@ -85,14 +85,40 @@
   - `vocab_index: item_id → VocabularyItem`（O(1) 查项）
   - `lemma_index: (lemma, meaning) → item_id`（O(1) 复合键 → 学习对象）。对于非多义词 meaning 可省略；对于多义词（如 bank=河岸 / bank=银行），meaning 字段用于从同一 lemma 的多个 item_id 中精确定位。具体实现待 ECDICT 存储格式调研后确定。
 
-## 7. 运行 / 开发命令（待项目骨架落地后回填）
+## 7. 运行 / 开发命令
 
-骨架尚未存在，目前没有真实可跑命令。落地骨架时请采用：
+所有命令需在激活 `.venv` 后执行（见 §3）。以下均为实测可用命令：
 
-- 启动开发服务：`uvicorn app.main:app --reload`（或自选包路径）
-- 单元测试：暂未引入测试框架；新增时优先 `pytest`，加入 `requirements.txt`
+```powershell
+# 激活虚拟环境（每次新 shell 都要做）
+.\.venv\Scripts\Activate.ps1
 
-落地后请回来更新本节为可复制的真实命令。
+# 启动开发服务（带热重载）
+uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+
+# 运行全部单元测试（跳过 integration 目录）
+pytest tests/ -v --ignore=tests/integration
+
+# 运行单个测试文件
+pytest tests/services/test_arc_planner.py -v
+
+# lint 检查（必须在 git add 之前通过）
+ruff check app/ tests/
+
+# 自动格式化
+ruff format app/ tests/
+
+# lint + format 一键修复
+ruff check --fix app/ tests/ && ruff format app/ tests/
+
+# 收集测试用例数（不执行）
+pytest --co
+```
+
+**注意事项**：
+- `ruff` 必须在 `.venv` 内运行（`requirements.txt` 含 `ruff`，但未全局安装）。
+- 测试当前收集约 560 个用例；部分模块仍为骨架（stub），对应测试使用 `pytest.skip` / `pytest.raises(NotImplementedError)` 占位。
+- 整个测试套不依赖网络，CI 可在离线环境运行。
 
 ## 8. 当一个 agent 接手时的优先级
 
@@ -104,79 +130,84 @@
 
 ## 9. 仓库结构（Repository Structure）
 
-> 以下为项目蓝图，**代码尚未落地**。任何一次首次创建 `app/` 或 `tests/` 子目录前必须与用户确认。落地时遵循下表，不要随意迁移路径。
+> 以下为项目结构。✅ = 已落地，⏳ = 待实现（骨架/stub），❌ = 未创建。
 
 ```
 ELBackend/
-├── app/                                # 应用主包（待创建）
-│   ├── __init__.py
-│   ├── main.py                         # FastAPI 实例 + lifespan + 路由挂载
+├── app/                                # ✅ 应用主包
+│   ├── __init__.py                     # ✅
+│   ├── main.py                         # ✅ FastAPI 实例 + lifespan + 路由挂载
 │   ├── core/
-│   │   ├── config.py                   # pydantic-settings：data_dir / ecdict_db_path / openai_*
-│   │   ├── dependencies.py             # FastAPI Depends 工厂（注入 service / storage / llm_client）
-│   │   └── exceptions.py               # 领域异常：NotFoundError/ValidationError/LLMError/GenerationConflictError/ECDictUnavailableError
-│   ├── models/                         # 19 个 Pydantic v2 数据契约（详见 §12）
-│   │   ├── fsrs.py
-│   │   ├── vocabulary.py
-│   │   ├── word_sense.py
-│   │   ├── chapter.py
-│   │   ├── progress.py
-│   │   ├── episode_log.py
-│   │   ├── arc_plan.py
-│   │   ├── episode.py
-│   │   └── arc_generation.py           # ArcGenerationState（§14）
-│   ├── api/v1/
-│   │   ├── router.py                   # APIRouter 聚合，前缀 /api/v1
-│   │   ├── vocabulary.py novel.py episode.py reading.py
-│   │   ├── dictionary.py arc.py health.py
-│   │   └── schemas.py                  # 请求 / 响应 schema（与领域模型解耦）
-│   ├── services/                       # 9 个业务模块（详见 §11）
-│   │   ├── vocabulary_preprocessor.py
-│   │   ├── novel_preprocessor.py
-│   │   ├── arc_planner.py
-│   │   ├── vocabulary_scheduler/                 # 内含 scheduler.py / pools.py / scorer.py / allocator.py
-│   │   ├── story_rewriter.py
-│   │   ├── vocabulary_annotator.py
-│   │   ├── episode_formatter.py
-│   │   ├── reading_tracker.py
-│   │   ├── mastery_evaluator.py
-│   │   └── arc_generation_manager.py   # 异步编排器（§14）
+│   │   ├── config.py                   # ✅ pydantic-settings：data_dir / ecdict_db_path / openai_*
+│   │   ├── dependencies.py             # ✅ FastAPI Depends 工厂（注入 service / storage / llm_client）
+│   │   └── exceptions.py               # ✅ 领域异常：NotFoundError/ValidationError/LLMError/GenerationConflictError/ECDictUnavailableError
+│   ├── models/                         # ✅ 10 个模型文件，20+ Pydantic v2 数据契约（详见 §12）
+│   │   ├── fsrs.py                     # ✅
+│   │   ├── vocabulary.py              # ✅
+│   │   ├── word_sense.py              # ✅
+│   │   ├── chapter.py                 # ✅
+│   │   ├── progress.py                # ✅
+│   │   ├── episode_log.py             # ✅
+│   │   ├── arc_plan.py                # ✅
+│   │   ├── episode.py                 # ✅
+│   │   └── arc_generation.py          # ✅ ArcGenerationState（§14）
+│   ├── api/v1/                         # ✅
+│   │   ├── router.py                   # ✅ APIRouter 聚合，前缀 /api/v1
+│   │   ├── vocabulary.py              # ✅
+│   │   ├── novel.py                   # ✅
+│   │   ├── episode.py                 # ✅
+│   │   ├── reading.py                 # ✅
+│   │   ├── dictionary.py              # ✅
+│   │   ├── arc.py                     # ✅
+│   │   ├── health.py                  # ✅
+│   │   └── schemas.py                  # ✅ 请求 / 响应 schema（与领域模型解耦）
+│   ├── services/                       # ✅ 14 个 service 类/包（详见 §11）
+│   │   ├── vocabulary_preprocessor.py  # ❌ 未落地（未来任务）
+│   │   ├── novel_preprocessor/         # ✅ 子包（T14）：preprocessor.py + chapter_splitter.py
+│   │   ├── arc_planner.py              # ✅
+│   │   ├── vocabulary_scheduler/       # ✅ 子包：scheduler.py / pools.py / scorer.py / allocator.py
+│   │   ├── story_rewriter/             # ✅ 子包（T15）：rewriter.py
+│   │   ├── vocabulary_annotator/       # ✅ 子包（T16）：annotator.py
+│   │   ├── episode_formatter.py        # ❌ 未落地（未来任务）
+│   │   ├── reading_tracker.py          # ⏳ 骨架（stub）
+│   │   ├── mastery_evaluator.py        # ✅
+│   │   └── arc_generation_manager.py   # ⏳ 骨架（stub），异步编排器（§14）
 │   ├── llm/
-│   │   ├── client.py                   # InstructorClient
-│   │   └── prompts.py
+│   │   ├── client.py                   # ✅ InstructorClient
+│   │   └── prompts.py                  # ✅
 │   ├── db/
-│   │   └── storage.py                  # JSONStorage[T] 泛型
+│   │   └── storage.py                  # ✅ JSONStorage[T] 泛型
 │   └── utils/
-│       ├── lemma.py                    # lookup_lemma（ECDICT exchange 查询）
-│       ├── word_index.py               # find_word_index（text.split(" ") 0-based）
-│       └── atomic_io.py                # JSON 原子写入：写 .tmp → os.replace
-├── tests/                              # 测试套，目录**严格镜像** app/
-│   ├── conftest.py                     # 顶层 fixtures（mock_llm / sample_vocab / tmp_data_dir）
-│   ├── fixtures/                       # JSON 测试数据
+│       ├── lemma.py                    # ✅ lookup_lemma（ECDICT exchange 查询）
+│       ├── word_index.py               # ✅ find_word_index（text.split(" ") 0-based）
+│       └── atomic_io.py                # ✅ JSON 原子写入：写 .tmp → os.replace
+├── tests/                              # ✅ 测试套，目录**严格镜像** app/（~51 个测试文件）
+│   ├── conftest.py                     # ✅ 顶层 fixtures（mock_llm / sample_vocab / tmp_data_dir）
+│   ├── fixtures/                       # ✅ JSON 测试数据
 │   ├── core/ models/ api/v1/ services/ llm/ db/ utils/
-│   │   └── test_*.py                   # 每个源文件对应一个测试文件
-│   └── integration/                    # 端到端测试（V1.5 暂留空目录）
-├── scripts/                            # 开发脚本：生成 fixture / 清缓存 / dump 状态
-├── asset/                              # 二进制依赖（ECDICT 数据库等，不入库）
-│   └── ecdict_mobile.db               # SQLite，需用户提供，**不入库**
-├── documents/                          # 设计文档（SoT）
+│   │   └── test_*.py                   # ✅
+│   └── integration/                    # ⏳ 端到端测试目录存在，空
+├── scripts/                            # ✅ 开发脚本：build_word_sense_db.py
+├── asset/                              # ⏳ 二进制依赖目录存在，ECDICT 数据库待用户提供
+│   └── ecdict_mobile.db               # ❌ SQLite，需用户提供，**不入库**
+├── documents/                          # ✅ 设计文档（SoT）
 │   ├── BACKEND_IN_OUT.md
 │   ├── product_analysis.md
 │   └── format_spec_json.md
-├── data/                               # 运行时数据（.gitignore，不入库）
-│   ├── UserVocabulary.json
-│   ├── ChapterDB.json
-│   ├── EpisodeCache/
-│   └── arc_generation_state.json       # ArcGenerationManager checkpoint（§14）
-├── .venv/                              # 虚拟环境（不入库）
+├── data/                               # ✅ 运行时数据（.gitignore，不入库）
+│   ├── UserVocabulary.json            # ❌
+│   ├── ChapterDB.json                  # ❌
+│   ├── EpisodeCache/                   # ❌
+│   ├── arc_generation_state.json       # ❌
+│   └── WordSenseDB.json               # ✅
+├── .venv/                              # ✅ 虚拟环境（不入库）
 ├── .vscode/
 ├── AGENTS.md
-├── README.md
-├── requirements.txt                    # 依赖列表，强制用 pip freeze 生成
-├── pytest.ini                          # testpaths=tests / pythonpath=. / asyncio_mode=auto
-├── ruff.toml                           # line-length=120 / target-version=py310 / select=E,F,W,I,UP,B,SIM
-├── .env                                # 本地配置（不入库）
-└── .gitignore
+├── requirements.txt                    # ✅ 依赖列表，强制用 pip freeze 生成
+├── pytest.ini                          # ✅ testpaths=tests / pythonpath=. / asyncio_mode=auto
+├── pyrightconfig.json                  # ✅ 类型检查配置
+├── .env                                # ✅ 本地配置（不入库）
+└── .gitignore                          # ✅
 ```
 
 **目录划分原则**：
@@ -233,11 +264,11 @@ ELBackend/
 | #   | 类                       | 文件                                      | 核心方法                                                                                                                              |
 | --- | ------------------------ | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
 | 1   | `VocabularyPreprocessor` | `app/services/vocabulary_preprocessor.py` | `preprocess(raw_items: list[dict]) -> UserVocabulary`                                                                                 |
-| 2   | `NovelPreprocessor`      | `app/services/novel_preprocessor.py`      | `preprocess(title: str, raw_text: str) -> list[Chapter]`                                                                              |
+| 2   | `NovelPreprocessor`      | `app/services/novel_preprocessor/`        | `preprocess(title: str, raw_text: str) -> list[Chapter]`                                                                              |
 | 3   | `ArcPlanner`             | `app/services/arc_planner.py`             | `plan_next_arc(progress, chapters, prev_arc) -> ArcPlan`                                                                              |
 | 4   | `VocabularyScheduler`    | `app/services/vocabulary_scheduler/`      | `schedule(arc_plan: dict, user_vocab: dict, now: datetime                                                                             | None = None) -> dict` |
-| 5   | `StoryRewriter`          | `app/services/story_rewriter.py`          | `rewrite_episode(target_words, chapter_slice) -> tuple[list[Message], list[str]]`（Message.text 含表层形式，不做 lemma 标注；marks 由 Annotator 后补）|
-| 6   | `VocabularyAnnotator`    | `app/services/vocabulary_annotator.py`    | `annotate(messages, target_words, shown_set) -> list[Message]`                                                                        |
+| 5   | `StoryRewriter`          | `app/services/story_rewriter/`            | `rewrite_episode(target_words, chapter_slice) -> tuple[list[Message], list[str]]`（Message.text 含表层形式，不做 lemma 标注；marks 由 Annotator 后补）|
+| 6   | `VocabularyAnnotator`    | `app/services/vocabulary_annotator/`      | `annotate(messages, target_words, shown_set) -> list[Message]`                                                                        |
 | 7   | `EpisodeFormatter`       | `app/services/episode_formatter.py`       | `format_episode(meta, messages, vocab) -> Episode`                                                                                    |
 | 8   | `ReadingTracker`         | `app/services/reading_tracker.py`         | `track(episode_log) -> ReadingProgress`                                                                                               |
 | 9   | `MasteryEvaluator`       | `app/services/mastery_evaluator.py`       | `evaluate(episode_log: EpisodeReadingLog, user_vocab: dict) -> dict`（隐式反馈→history_window 评分→FSRS review_card，含跨日强制机制） |
@@ -295,7 +326,7 @@ ELBackend/
 
 ## 12. 数据契约（Pydantic 模型规划）
 
-19 个 Pydantic v2 模型分布在 9 个文件。命名以 `documents/BACKEND_IN_OUT.md` §三 与 `documents/format_spec_json.md` 为准。
+20+ Pydantic v2 模型分布在 10 个文件。命名以 `documents/BACKEND_IN_OUT.md` §三 与 `documents/format_spec_json.md` 为准。
 
 | 文件                           | 模型                                                                           | 关键约束                                                                                                                                                                                                                                                                                |
 | ------------------------------ | ------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -373,7 +404,7 @@ async def atomic_write_json(path: Path, model: BaseModel) -> None: ...
 
 ## 14. 异步任务架构（ArcGenerationManager）
 
-> 设计草案，代码尚未落地。
+> 状态机骨架已落地（`app/services/arc_generation_manager.py`），阶段逻辑待补充。
 
 ### 14.1 设计原则
 - **MVP 阶段不引入外部消息队列**（不装 Celery / arq / RQ / Taskiq / Redis）
@@ -569,7 +600,7 @@ IDLE
 
 ### 16.7 Pydantic 模型测试
 
-- 19 个模型每个至少 3 个测试：`valid_minimal`、`valid_full`、`invalid` (`pytest.raises(ValidationError)`)
+- 20+ 个模型每个至少 3 个测试：`valid_minimal`、`valid_full`、`invalid` (`pytest.raises(ValidationError)`)
 - 用 `documents/format_spec_json.md` 的完整 Episode 示例做一次 `Episode.model_validate(...)` 必须通过
 - 用真实 `fsrs.Card(**fsrs_card_dict)` 还原一次，验证字段一一对应
 
@@ -595,7 +626,7 @@ IDLE
 
 ## 17. Git 工作流（Git Workflow）
 
-> 当前仓库**不是 git repo**（无 `.git` 目录）。本节为"用户 `git init` 之后"的统一规范。
+> 仓库**已是 git repo**（含 `.git` 目录）。以下为统一规范。
 
 ### 17.1 仓库初始化（待办）
 
@@ -644,7 +675,7 @@ feat(arc): add ArcGenerationManager state machine
 
 ```text
 fix(annotator): correct marks.index off-by-one in find_word_index
-test(models): cover Pydantic validation for 19 models
+test(models): cover Pydantic validation for 20+ models
 docs(agents): add §14 async architecture
 chore(deps): add pytest + instructor to requirements.txt
 ```
@@ -667,7 +698,6 @@ chore(deps): add pytest + instructor to requirements.txt
 
 ### 17.5 当前状态备忘
 
-- 本架构升级（`agents-md-architecture-v2`）完成时，仓库**仍非 git repo**
-- 下一次落地代码骨架的 task 必须**第一步**执行 `git init`
-- `git init` 后，已有的 AGENTS.md / requirements.txt / 三份设计文档作为初始 commit
-- 后续每个 Sisyphus task 完成时按 §17.2 格式提交一次
+- 仓库已初始化为 git repo，含 `.git` 目录和 `.gitignore`
+- 已有 AGENTS.md / requirements.txt / 三份设计文档作为初始 commit
+- 每个 Sisyphus task 完成时按 §17.2 格式提交一次

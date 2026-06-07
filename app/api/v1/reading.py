@@ -67,8 +67,8 @@ async def log_reading(
     The request body carries per-word appearance counts and click events.
     The server stores them and updates progress counters.
     """
-    updated = tracker.track(log)
-    return ReadingLogResponse(updated=updated)
+    tracker.track(log)
+    return ReadingLogResponse(updated=True)
 
 
 @router.post("/finish", response_model=FinishEpisodeResponse)

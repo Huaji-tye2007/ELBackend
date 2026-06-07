@@ -22,6 +22,7 @@ from app.db.storage import JSONStorage
 from app.llm.client import InstructorClient
 from app.models.chapter import ChapterDB
 from app.models.vocabulary import UserVocabulary
+from app.models.word_sense import WordSenseDB
 
 
 # ════════════════════════════════════════════════════════════════
@@ -133,6 +134,18 @@ def get_chapter_db_storage() -> JSONStorage[ChapterDB]:
     return JSONStorage(settings.data_dir / "ChapterDB.json", ChapterDB)
 
 
+@lru_cache
+def get_word_sense_db() -> WordSenseDB:
+    """Return a cached WordSenseDB singleton loaded from ``data/WordSenseDB.json``.
+
+    Raises:
+        FileNotFoundError: If ``data/WordSenseDB.json`` does not exist.
+    """
+    settings = get_settings()
+    storage = JSONStorage(settings.data_dir / "WordSenseDB.json", WordSenseDB)
+    return storage.load()
+
+
 # ════════════════════════════════════════════════════════════════
 # Service factories — implemented services
 # ════════════════════════════════════════════════════════════════
@@ -219,7 +232,8 @@ def get_reading_tracker():
     """
     from app.services.reading_tracker import ReadingTracker
 
-    return ReadingTracker()
+    settings = get_settings()
+    return ReadingTracker(settings.data_dir)
 
 
 @lru_cache
@@ -238,22 +252,29 @@ def get_arc_generation_manager():
 # ════════════════════════════════════════════════════════════════
 
 
+@lru_cache
 def get_vocabulary_preprocessor():
-    """Stub — VocabularyPreprocessor service is not yet implemented.
+    """Return a cached VocabularyPreprocessor singleton with WordSenseDB injected.
 
-    Raises:
-        NotImplementedError: Always (placeholder for future implementation).
+    Uses lazy import to avoid circular dependency at module load time.
     """
-    raise NotImplementedError("VocabularyPreprocessor service is not yet implemented")
+    from app.services.vocabulary_preprocessor import VocabularyPreprocessor
+
+    return VocabularyPreprocessor(word_sense_db=get_word_sense_db())
 
 
+@lru_cache
 def get_episode_formatter():
-    """Stub — EpisodeFormatter service is not yet implemented.
+    """Return a cached EpisodeFormatter singleton with cache_dir injected.
 
-    Raises:
-        NotImplementedError: Always (placeholder for future implementation).
+    Cache directory is ``<data_dir>/EpisodeCache``, created on first write.
+    Uses lazy import to avoid circular dependency at module load time.
     """
-    raise NotImplementedError("EpisodeFormatter service is not yet implemented")
+    from app.services.episode_formatter import EpisodeFormatter
+
+    settings = get_settings()
+    cache_dir = settings.data_dir / "EpisodeCache"
+    return EpisodeFormatter(cache_dir=cache_dir)
 
 
 __all__ = [
@@ -263,6 +284,7 @@ __all__ = [
     "get_ecdict_db",
     "get_user_vocab_storage",
     "get_chapter_db_storage",
+    "get_word_sense_db",
     "get_arc_planner",
     "get_mastery_evaluator",
     "get_novel_preprocessor",

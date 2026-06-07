@@ -21,7 +21,6 @@ from app.core.dependencies import (
     get_arc_planner,
     get_chapter_db_storage,
     get_ecdict_db,
-    get_episode_formatter,
     get_llm_client,
     get_mastery_evaluator,
     get_novel_preprocessor,
@@ -32,6 +31,7 @@ from app.core.dependencies import (
     get_vocabulary_annotator,
     get_vocabulary_preprocessor,
     get_vocabulary_scheduler,
+    get_word_sense_db,
 )
 from app.core.exceptions import ECDictUnavailableError
 from app.db.storage import JSONStorage
@@ -417,20 +417,64 @@ class TestGetVocabularyScheduler:
 # ── Service factories — stubs ─────────────────────────────────────────
 
 
-class TestStubServices:
-    """Tests for stub factory functions that raise NotImplementedError."""
+class TestGetWordSenseDB:
+    """Tests for get_word_sense_db()."""
 
-    @pytest.mark.parametrize(
-        "factory",
-        [
-            get_vocabulary_preprocessor,
-            get_episode_formatter,
-        ],
-    )
-    def test_raises_not_implemented_error(self, factory) -> None:
-        """Each stub factory must raise NotImplementedError immediately."""
-        with pytest.raises(NotImplementedError):
-            factory()
+    def test_returns_word_sense_db(self, tmp_path: Path) -> None:
+        """Should return a WordSenseDB instance when WordSenseDB.json exists."""
+        _clear_all_caches()
+        from app.models.word_sense import WordSenseDB
+
+        data_dir = tmp_path / "data"
+        data_dir.mkdir()
+        ws_file = data_dir / "WordSenseDB.json"
+        ws_file.write_text(
+            '{"test": {"is_polysemous": false, "senses": [{"id": "test_1", "meaning": "测试"}]}}',
+            encoding="utf-8",
+        )
+
+        with mock.patch.dict(os.environ, {"DATA_DIR": str(data_dir)}, clear=True):
+            db = get_word_sense_db()
+            assert isinstance(db, WordSenseDB)
+            assert db.lookup("test") is not None
+
+
+class TestGetVocabularyPreprocessor:
+    """Tests for get_vocabulary_preprocessor()."""
+
+    def test_returns_vocabulary_preprocessor(self, tmp_path: Path) -> None:
+        """Should return a VocabularyPreprocessor instance when WordSenseDB exists."""
+        _clear_all_caches()
+        from app.services.vocabulary_preprocessor import VocabularyPreprocessor
+
+        data_dir = tmp_path / "data"
+        data_dir.mkdir()
+        ws_file = data_dir / "WordSenseDB.json"
+        ws_file.write_text(
+            '{"test": {"is_polysemous": false, "senses": [{"id": "test_1", "meaning": "测试"}]}}',
+            encoding="utf-8",
+        )
+
+        with mock.patch.dict(os.environ, {"DATA_DIR": str(data_dir)}, clear=True):
+            preprocessor = get_vocabulary_preprocessor()
+            assert isinstance(preprocessor, VocabularyPreprocessor)
+
+    def test_singleton_returns_same_instance(self, tmp_path: Path) -> None:
+        """Multiple calls must return the same VocabularyPreprocessor."""
+        _clear_all_caches()
+
+        data_dir = tmp_path / "data"
+        data_dir.mkdir()
+        ws_file = data_dir / "WordSenseDB.json"
+        ws_file.write_text(
+            '{"test": {"is_polysemous": false, "senses": [{"id": "test_1", "meaning": "测试"}]}}',
+            encoding="utf-8",
+        )
+
+        with mock.patch.dict(os.environ, {"DATA_DIR": str(data_dir)}, clear=True):
+            p1 = get_vocabulary_preprocessor()
+            p2 = get_vocabulary_preprocessor()
+            assert p1 is p2
 
 
 # ── ReadingTracker ─────────────────────────────────────────────────────

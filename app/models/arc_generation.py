@@ -37,6 +37,10 @@ class ArcGenerationState(BaseModel):
     retry_count: int = Field(
         default=0, ge=0, description="Number of retries attempted for current phase"
     )
+    intermediate_data: dict | None = Field(
+        default=None,
+        description="Serialized intermediate pipeline results for crash-resume support",
+    )
     last_error: str | None = Field(
         default=None, description="Last error message, if phase is FAILED"
     )

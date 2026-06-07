@@ -199,14 +199,16 @@ def get_story_rewriter():
 def get_vocabulary_annotator():
     """Return a cached VocabularyAnnotator singleton.
 
-    Loads the current ``UserVocabulary`` from storage and injects it.
+    Loads the current ``UserVocabulary`` from storage, opens the ECDICT
+    database connection, and injects both.
     Uses lazy import to avoid circular dependency at module load time.
     """
     from app.services.vocabulary_annotator import VocabularyAnnotator
 
     storage = get_user_vocab_storage()
     vocab = storage.load()
-    return VocabularyAnnotator(vocab)
+    ecdict_db = get_ecdict_db()
+    return VocabularyAnnotator(user_vocab=vocab, ecdict_db=ecdict_db)
 
 
 def get_vocabulary_scheduler() -> Callable[..., Any]:
@@ -238,13 +240,19 @@ def get_reading_tracker():
 
 @lru_cache
 def get_arc_generation_manager():
-    """Return a cached ArcGenerationManager singleton.
+    """Return a cached ArcGenerationManager singleton with all 5 services injected.
 
     Uses lazy import to avoid circular dependency at module load time.
     """
     from app.services.arc_generation_manager import ArcGenerationManager
 
-    return ArcGenerationManager()
+    return ArcGenerationManager(
+        arc_planner=get_arc_planner(),
+        vocab_scheduler=get_vocabulary_scheduler(),
+        story_rewriter=get_story_rewriter(),
+        vocab_annotator=get_vocabulary_annotator(),
+        episode_formatter=get_episode_formatter(),
+    )
 
 
 # ════════════════════════════════════════════════════════════════

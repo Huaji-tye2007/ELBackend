@@ -2,20 +2,25 @@
 
 Ref: AGENTS.md §11 (module #6) and documents/BACKEND_IN_OUT.md §四.6.
 
-Migration notes (T16):
-  - Uses UserVocabulary.vocab_index / lemma_index (NOT build_indexes).
-  - Uses inline lenient token matching (strips punctuation, case-insensitive).
-  - find_word_index() from app.utils.word_index is for exact matching;
-    the annotator needs lenient matching for natural text, so token
-    iteration is done locally.
-  - lookup_lemma() from app.utils.lemma is NOT needed here — target_words
-    already carry item_id resolved by the VocabularyScheduler.
+Design (T4 refactor):
+  - Accepts target_words as ``{lemma, meaning, item_id}`` (no surface_form).
+  - Internally resolves surface forms via ECDICT ``lookup_lemma()``.
+  - Iterates tokens in message text, computes lemma per token, matches
+    against target lemmas, and creates Marks with the original surface form
+    and 0‑based word index.
+  - ``marks.word`` stores the surface form from the text (e.g. "consuming"),
+    NOT the lemma.
+  - ``is_new`` is computed from ``fsrs_card.last_review`` and the intra‑episode
+    ``shown_set`` (same logic as before).
 """
 
 from __future__ import annotations
 
+import sqlite3
+
 from app.models.episode import DialogueMessage, Mark, NarrationMessage
 from app.models.vocabulary import UserVocabulary, VocabularyItem
+from app.utils.lemma import lookup_lemma
 
 _SURFACE_PUNCTUATION = set(".,!?;:\"'")
 
@@ -23,22 +28,27 @@ _SURFACE_PUNCTUATION = set(".,!?;:\"'")
 class VocabularyAnnotator:
     """Inject vocabulary marks into message texts for frontend rendering.
 
-    For each message text, finds occurrences of each target word's surface
-    form, computes 0-based word indices, determines ``is_new`` status, and
-    populates the message's ``marks`` list.
+    For each message text, tokenises the text, resolves each token's lemma
+    via ECDICT, matches against target word lemmas, computes ``is_new``
+    status, and populates the message's ``marks`` list.
 
     Attributes:
         user_vocab: The user's vocabulary state with O(1) item_id lookup.
+        ecdict_db: An open ``sqlite3.Connection`` to ``asset/ecdict_mobile.db``.
     """
 
-    def __init__(self, user_vocab: UserVocabulary) -> None:
-        """Initialise with user vocabulary state.
+    def __init__(
+        self, user_vocab: UserVocabulary, ecdict_db: sqlite3.Connection
+    ) -> None:
+        """Initialise with user vocabulary state and ECDICT connection.
 
         Args:
             user_vocab: UserVocabulary model containing vocab_index and
                 lemma_index properties for O(1) lookups.
+            ecdict_db: An open SQLite connection to the ECDICT database.
         """
         self.user_vocab = user_vocab
+        self.ecdict_db = ecdict_db
 
     # ------------------------------------------------------------------
     # Public API
@@ -54,9 +64,10 @@ class VocabularyAnnotator:
 
         Args:
             messages: Episode messages to annotate (narration or dialogue).
-            target_words: List of dicts, each with ``item_id`` and
-                ``surface_form`` keys.  ``item_id`` is looked up in
-                ``user_vocab.vocab_index``.
+            target_words: List of dicts, each with ``lemma``, ``meaning``,
+                and ``item_id`` keys.  The annotator internally resolves
+                surface forms by matching each token's ECDICT‑derived lemma
+                against ``target["lemma"]``.
             shown_set: Set of item_ids that have already appeared in this
                 episode (mutated in-place when ``is_new=True`` marks are
                 added).
@@ -70,20 +81,31 @@ class VocabularyAnnotator:
         for msg in messages:
             marks: list[Mark] = []
 
+            # 1. Tokenise and resolve lemmas for every token in the message
+            token_data = _tokenize_and_lemmatize(msg.text, self.ecdict_db)
+            # token_data: list of (cleaned_token, lemma, index)
+
+            # 2. For each target word, find tokens whose lemma matches
             for tw in target_words:
                 item_id: str = tw["item_id"]
-                surface_form: str = tw["surface_form"]
+                target_lemma: str = tw["lemma"]
 
                 item: VocabularyItem | None = self.user_vocab.vocab_index.get(item_id)
                 if item is None:
                     continue
 
-                indices = _find_word_indices(msg.text, surface_form)
-                if not indices:
+                # Collect all matching token positions for this target
+                matching: list[tuple[str, int]] = [
+                    (cleaned, idx)
+                    for cleaned, lemma, idx in token_data
+                    if lemma.lower() == target_lemma.lower()
+                ]
+
+                if not matching:
                     continue
 
                 first_new = True
-                for idx in indices:
+                for cleaned, idx in matching:
                     is_new: bool = (
                         _compute_is_new(item=item, shown_set=shown_set)
                         if first_new
@@ -94,7 +116,7 @@ class VocabularyAnnotator:
 
                     marks.append(
                         Mark(
-                            word=surface_form,
+                            word=cleaned,  # surface form from text, not lemma
                             index=idx,
                             definition=item.meaning,
                             is_new=is_new,
@@ -113,31 +135,62 @@ class VocabularyAnnotator:
 # ------------------------------------------------------------------
 
 
-def _find_word_indices(text: str, surface_form: str) -> list[int]:
-    """Find 0-based word indices of a surface form in text.
+def _tokenize_and_lemmatize(
+    text: str,
+    db: sqlite3.Connection,
+) -> list[tuple[str, str, int]]:
+    """Tokenize message text and resolve lemma for each token via ECDICT.
 
-    Matching is lenient: tokens have trailing punctuation stripped and
-    comparison is case-insensitive.  This handles real-world text like
-    ``"consuming."`` matching the target ``"consuming"``.
+    Trailing punctuation (``.,!?;:"'``) is stripped before lemma lookup
+    so that ``"consuming,"`` is treated as ``"consuming"``.
+
+    If a capitalised token is not found in ECDICT, a lower‑cased fallback
+    lookup is attempted (e.g. ``"Consuming"`` → ``"consuming"`` → lemma
+    ``"consume"``).
 
     Args:
-        text: The message text to search within.
-        surface_form: The inflected word form to locate.
+        text: The message text to tokenise.
+        db: An open ECDICT SQLite connection.
 
     Returns:
-        List of 0-based word indices where *surface_form* appears.
-        Empty list if not found.
+        List of ``(cleaned_token, lemma, index)`` tuples.  ``cleaned_token``
+        preserves original capitalisation and is used as ``marks.word``.
     """
     tokens = text.split()
-    result: list[int] = []
-    lower_surface = surface_form.lower()
+    result: list[tuple[str, str, int]] = []
 
     for i, tok in enumerate(tokens):
         cleaned = tok.strip("".join(_SURFACE_PUNCTUATION))
-        if cleaned.lower() == lower_surface:
-            result.append(i)
+        if not cleaned:
+            continue
+        lemma = _resolve_lemma(cleaned, db)
+        result.append((cleaned, lemma, i))
 
     return result
+
+
+def _resolve_lemma(word: str, db: sqlite3.Connection) -> str:
+    """Resolve a word to its base lemma, with case‑insensitive fallback.
+
+    Tries the word as‑is first.  If ECDICT returns the input unchanged
+    (meaning the word is not in the database), a lower‑cased retry is
+    attempted.  The returned lemma is always lower‑cased for consistent
+    matching against target lemmas.
+
+    Args:
+        word: A cleaned token (punctuation already stripped).
+        db: An open ECDICT SQLite connection.
+
+    Returns:
+        The base lemma in lower case.
+    """
+    lemma = lookup_lemma(word, db)
+    if lemma == word and word != word.lower():
+        # Capitalised form not found — try lower‑cased version
+        lemma_lower = lookup_lemma(word.lower(), db)
+        if lemma_lower != word.lower():
+            lemma = lemma_lower
+    return lemma.lower()
 
 
 def _compute_is_new(

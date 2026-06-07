@@ -1,12 +1,14 @@
 """Tests for VocabularyAnnotator service.
 
-Ref: T16 migration — ensures Pydantic-based annotator behaves identically
-to the original dict-based implementation (vocabulary_annotator/annotator.py).
+Ref: T4 refactor — annotator now self-derives surface forms via ECDICT
+lemma lookup instead of relying on caller-provided surface_form.
 """
 
 from __future__ import annotations
 
 import datetime
+import sqlite3
+from pathlib import Path
 
 import pytest
 
@@ -52,6 +54,21 @@ def _make_vocab_item(
     )
 
 
+@pytest.fixture(scope="module")
+def ecdict_db() -> sqlite3.Connection:
+    """Open the real ECDICT database for lemma derivation tests.
+
+    Uses the default path ``asset/ecdict_mobile.db`` relative to the
+    project root (tests run with ``pythonpath = .`` in pytest.ini).
+    """
+    db_path = Path("asset/ecdict_mobile.db")
+    if not db_path.exists():
+        pytest.skip("ECDICT database not available at asset/ecdict_mobile.db")
+    conn = sqlite3.connect(str(db_path))
+    yield conn
+    conn.close()
+
+
 @pytest.fixture
 def user_vocab() -> UserVocabulary:
     """A UserVocabulary with two items: one never-reviewed, one already reviewed."""
@@ -70,9 +87,11 @@ def user_vocab() -> UserVocabulary:
 
 
 @pytest.fixture
-def annotator(user_vocab: UserVocabulary) -> VocabularyAnnotator:
-    """VocabularyAnnotator initialised with the fixture vocab."""
-    return VocabularyAnnotator(user_vocab=user_vocab)
+def annotator(
+    user_vocab: UserVocabulary, ecdict_db: sqlite3.Connection
+) -> VocabularyAnnotator:
+    """VocabularyAnnotator initialised with the fixture vocab and ECDICT db."""
+    return VocabularyAnnotator(user_vocab=user_vocab, ecdict_db=ecdict_db)
 
 
 # ---------------------------------------------------------------------------
@@ -85,7 +104,9 @@ class TestSimpleAnnotation:
 
     def test_marks_populated(self, annotator: VocabularyAnnotator) -> None:
         msg = NarrationMessage(type="narration", text="He was consuming food.")
-        target_words = [{"item_id": "consume_v1", "surface_form": "consuming"}]
+        target_words = [
+            {"lemma": "consume", "meaning": "消费", "item_id": "consume_v1"}
+        ]
         shown_set: set[str] = set()
 
         result = annotator.annotate(
@@ -97,15 +118,17 @@ class TestSimpleAnnotation:
         assert len(result) == 1
         assert len(result[0].marks) == 1
         mark = result[0].marks[0]
-        assert mark.word == "consuming"
-        assert mark.index == 2
-        assert mark.definition == "消费"
+        assert mark.word == "consuming"  # surface form from text
+        assert mark.index == 2  # 0-based word index
+        assert mark.definition == "消费"  # from VocabularyItem.meaning
         assert mark.is_new is True
 
     def test_punctuation_handling(self, annotator: VocabularyAnnotator) -> None:
         """Target word with trailing punctuation should still match."""
         msg = NarrationMessage(type="narration", text="She was consuming, slowly.")
-        target_words = [{"item_id": "consume_v1", "surface_form": "consuming"}]
+        target_words = [
+            {"lemma": "consume", "meaning": "消费", "item_id": "consume_v1"}
+        ]
 
         result = annotator.annotate(
             messages=[msg],
@@ -117,9 +140,11 @@ class TestSimpleAnnotation:
         assert result[0].marks[0].index == 2
 
     def test_case_insensitive(self, annotator: VocabularyAnnotator) -> None:
-        """Surface form matching should be case-insensitive."""
+        """Lemma matching should be case-insensitive (Consuming → consuming → consume)."""
         msg = NarrationMessage(type="narration", text="Consuming food is nice.")
-        target_words = [{"item_id": "consume_v1", "surface_form": "consuming"}]
+        target_words = [
+            {"lemma": "consume", "meaning": "消费", "item_id": "consume_v1"}
+        ]
 
         result = annotator.annotate(
             messages=[msg],
@@ -129,6 +154,7 @@ class TestSimpleAnnotation:
 
         assert len(result[0].marks) == 1
         assert result[0].marks[0].index == 0
+        assert result[0].marks[0].word == "Consuming"  # preserves original case
 
 
 class TestIsNew:
@@ -137,7 +163,9 @@ class TestIsNew:
     def test_is_new_true(self, annotator: VocabularyAnnotator) -> None:
         """First occurrence of an unseen word → is_new=True."""
         msg = NarrationMessage(type="narration", text="He was consuming food.")
-        target_words = [{"item_id": "consume_v1", "surface_form": "consuming"}]
+        target_words = [
+            {"lemma": "consume", "meaning": "消费", "item_id": "consume_v1"}
+        ]
 
         result = annotator.annotate(
             messages=[msg],
@@ -150,7 +178,9 @@ class TestIsNew:
     def test_is_new_false_already_shown(self, annotator: VocabularyAnnotator) -> None:
         """Word already in shown_set → is_new=False."""
         msg = NarrationMessage(type="narration", text="He was consuming food.")
-        target_words = [{"item_id": "consume_v1", "surface_form": "consuming"}]
+        target_words = [
+            {"lemma": "consume", "meaning": "消费", "item_id": "consume_v1"}
+        ]
 
         result = annotator.annotate(
             messages=[msg],
@@ -165,7 +195,7 @@ class TestIsNew:
     ) -> None:
         """Word with last_review set → is_new=False even if not in shown_set."""
         msg = NarrationMessage(type="narration", text="by the bank river.")
-        target_words = [{"item_id": "bank_river", "surface_form": "bank"}]
+        target_words = [{"lemma": "bank", "meaning": "河岸", "item_id": "bank_river"}]
 
         result = annotator.annotate(
             messages=[msg],
@@ -178,7 +208,9 @@ class TestIsNew:
     def test_shown_set_mutated(self, annotator: VocabularyAnnotator) -> None:
         """shown_set should be mutated when is_new=True is determined."""
         msg = NarrationMessage(type="narration", text="He was consuming food.")
-        target_words = [{"item_id": "consume_v1", "surface_form": "consuming"}]
+        target_words = [
+            {"lemma": "consume", "meaning": "消费", "item_id": "consume_v1"}
+        ]
         shown_set: set[str] = set()
 
         annotator.annotate(
@@ -199,7 +231,9 @@ class TestMultipleOccurrences:
             type="narration",
             text="consuming consuming consuming",
         )
-        target_words = [{"item_id": "consume_v1", "surface_form": "consuming"}]
+        target_words = [
+            {"lemma": "consume", "meaning": "消费", "item_id": "consume_v1"}
+        ]
 
         result = annotator.annotate(
             messages=[msg],
@@ -220,7 +254,9 @@ class TestSurfaceFormPreserved:
 
     def test_surface_form_stored(self, annotator: VocabularyAnnotator) -> None:
         msg = NarrationMessage(type="narration", text="He was consuming food greedily.")
-        target_words = [{"item_id": "consume_v1", "surface_form": "consuming"}]
+        target_words = [
+            {"lemma": "consume", "meaning": "消费", "item_id": "consume_v1"}
+        ]
 
         result = annotator.annotate(
             messages=[msg],
@@ -243,7 +279,9 @@ class TestDialogueMessage:
             name="主角",
             text="I am consuming the food.",
         )
-        target_words = [{"item_id": "consume_v1", "surface_form": "consuming"}]
+        target_words = [
+            {"lemma": "consume", "meaning": "消费", "item_id": "consume_v1"}
+        ]
 
         result = annotator.annotate(
             messages=[msg],
@@ -264,7 +302,9 @@ class TestEdgeCases:
         """Empty message list → empty result."""
         result = annotator.annotate(
             messages=[],
-            target_words=[{"item_id": "consume_v1", "surface_form": "consuming"}],
+            target_words=[
+                {"lemma": "consume", "meaning": "消费", "item_id": "consume_v1"}
+            ],
             shown_set=set(),
         )
         assert result == []
@@ -282,7 +322,7 @@ class TestEdgeCases:
     def test_unknown_item_id(self, annotator: VocabularyAnnotator) -> None:
         """Target word with unknown item_id → skipped gracefully."""
         msg = NarrationMessage(type="narration", text="Hello world.")
-        target_words = [{"item_id": "nonexistent", "surface_form": "Hello"}]
+        target_words = [{"lemma": "hello", "meaning": "你好", "item_id": "nonexistent"}]
 
         result = annotator.annotate(
             messages=[msg],
@@ -291,10 +331,10 @@ class TestEdgeCases:
         )
         assert result[0].marks == []
 
-    def test_surface_not_in_text(self, annotator: VocabularyAnnotator) -> None:
-        """Target word whose surface form doesn't appear in text → skipped."""
+    def test_lemma_not_in_text(self, annotator: VocabularyAnnotator) -> None:
+        """Target word whose lemma doesn't appear in any token → skipped."""
         msg = NarrationMessage(type="narration", text="No matching words here.")
-        target_words = [{"item_id": "consume_v1", "surface_form": "xyzzy"}]
+        target_words = [{"lemma": "xyzzy", "meaning": "?", "item_id": "consume_v1"}]
 
         result = annotator.annotate(
             messages=[msg],
@@ -303,7 +343,9 @@ class TestEdgeCases:
         )
         assert result[0].marks == []
 
-    def test_marks_sorted_by_index(self, annotator: VocabularyAnnotator) -> None:
+    def test_marks_sorted_by_index(
+        self, user_vocab: UserVocabulary, ecdict_db: sqlite3.Connection
+    ) -> None:
         """Marks should be sorted by index regardless of target_words order."""
         # Create vocab items for "aaa" and "zzz"
         uv = UserVocabulary(
@@ -313,12 +355,12 @@ class TestEdgeCases:
                 _make_vocab_item("zzz_v1", "zzz", "Z", last_review=None),
             ],
         )
-        ann = VocabularyAnnotator(user_vocab=uv)
+        ann = VocabularyAnnotator(user_vocab=uv, ecdict_db=ecdict_db)
 
         msg = NarrationMessage(type="narration", text="zzz middle aaa end.")
         target_words = [
-            {"item_id": "zzz_v1", "surface_form": "zzz"},
-            {"item_id": "aaa_v1", "surface_form": "aaa"},
+            {"lemma": "zzz", "meaning": "Z", "item_id": "zzz_v1"},
+            {"lemma": "aaa", "meaning": "A", "item_id": "aaa_v1"},
         ]
 
         result = ann.annotate(
@@ -341,7 +383,9 @@ class TestEdgeCases:
                 text="I see you consuming.",
             ),
         ]
-        target_words = [{"item_id": "consume_v1", "surface_form": "consuming"}]
+        target_words = [
+            {"lemma": "consume", "meaning": "消费", "item_id": "consume_v1"}
+        ]
         shown_set: set[str] = set()
 
         result = annotator.annotate(
@@ -357,7 +401,7 @@ class TestEdgeCases:
     def test_model_copy_preserves_fields(self, annotator: VocabularyAnnotator) -> None:
         """Annotated messages should preserve original type and fields."""
         msg = NarrationMessage(type="narration", text="Hello world.")
-        target_words = [{"item_id": "consume_v1", "surface_form": "world"}]
+        target_words = [{"lemma": "world", "meaning": "世界", "item_id": "consume_v1"}]
 
         result = annotator.annotate(
             messages=[msg],
@@ -369,3 +413,101 @@ class TestEdgeCases:
         assert result[0].type == "narration"
         assert result[0].text == "Hello world."
         assert len(result[0].marks) == 1
+
+
+# ---------------------------------------------------------------------------
+# T4: New tests for ECDICT self-derivation
+# ---------------------------------------------------------------------------
+
+
+class TestEcdictSelfDerivation:
+    """Verify that the annotator correctly derives lemmas via ECDICT."""
+
+    def test_ecdict_derives_went_to_go(self, annotator: VocabularyAnnotator) -> None:
+        """ECDICT resolves "went" → lemma "go" → matches target with lemma="go"."""
+        msg = NarrationMessage(type="narration", text="He went home after work.")
+        # Need a vocab item whose lemma is "go"
+        uv = UserVocabulary(
+            user_id="test",
+            vocabulary=[
+                _make_vocab_item("go_v1", "go", "去", last_review=None),
+            ],
+        )
+        ann = VocabularyAnnotator(user_vocab=uv, ecdict_db=annotator.ecdict_db)
+        target_words = [{"lemma": "go", "meaning": "去", "item_id": "go_v1"}]
+
+        result = ann.annotate(
+            messages=[msg],
+            target_words=target_words,
+            shown_set=set(),
+        )
+
+        assert len(result[0].marks) == 1
+        mark = result[0].marks[0]
+        assert mark.word == "went"  # surface form from text, NOT lemma "go"
+        assert mark.index == 1  # "He"(0) "went"(1) "home"(2) ...
+        assert mark.definition == "去"
+        assert mark.is_new is True
+
+    def test_multiple_inflections_same_lemma(
+        self, annotator: VocabularyAnnotator
+    ) -> None:
+        """Different surface forms of the same lemma all get marks."""
+        msg = NarrationMessage(
+            type="narration",
+            text="He went and has gone already.",
+        )
+        uv = UserVocabulary(
+            user_id="test",
+            vocabulary=[
+                _make_vocab_item("go_v1", "go", "去", last_review=None),
+            ],
+        )
+        ann = VocabularyAnnotator(user_vocab=uv, ecdict_db=annotator.ecdict_db)
+        target_words = [{"lemma": "go", "meaning": "去", "item_id": "go_v1"}]
+
+        result = ann.annotate(
+            messages=[msg],
+            target_words=target_words,
+            shown_set=set(),
+        )
+
+        # "went" at index 1, "gone" at index 4
+        assert len(result[0].marks) == 2
+        assert result[0].marks[0].word == "went"
+        assert result[0].marks[0].index == 1
+        assert result[0].marks[0].is_new is True  # first occurrence
+        assert result[0].marks[1].word == "gone"
+        assert result[0].marks[1].index == 4
+        assert result[0].marks[1].is_new is False  # already shown
+
+    def test_lemma_no_match_in_text(self, annotator: VocabularyAnnotator) -> None:
+        """Target lemma not present in text → no marks (even if related words exist)."""
+        msg = NarrationMessage(type="narration", text="He was eating dinner.")
+        target_words = [
+            {"lemma": "consume", "meaning": "消费", "item_id": "consume_v1"}
+        ]
+
+        result = annotator.annotate(
+            messages=[msg],
+            target_words=target_words,
+            shown_set=set(),
+        )
+
+        # "eating" → lemma "eat", NOT "consume" → no marks
+        assert result[0].marks == []
+
+    def test_ecdict_derives_banks_to_bank(self, annotator: VocabularyAnnotator) -> None:
+        """ECDICT resolves plural "banks" → lemma "bank"."""
+        msg = NarrationMessage(type="narration", text="The banks were open.")
+        target_words = [{"lemma": "bank", "meaning": "河岸", "item_id": "bank_river"}]
+
+        result = annotator.annotate(
+            messages=[msg],
+            target_words=target_words,
+            shown_set=set(),
+        )
+
+        assert len(result[0].marks) == 1
+        assert result[0].marks[0].word == "banks"
+        assert result[0].marks[0].index == 1

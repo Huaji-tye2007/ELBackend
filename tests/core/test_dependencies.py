@@ -37,7 +37,7 @@ from app.core.exceptions import ECDictUnavailableError
 from app.db.storage import JSONStorage
 from app.llm.client import InstructorClient
 from app.models.chapter import ChapterDB
-from app.models.vocabulary import UserVocabulary
+from app.models.vocabulary import UserVocabulary, VocabularyItem
 
 
 # ── helpers ────────────────────────────────────────────────────────────
@@ -57,6 +57,37 @@ def _clear_all_caches() -> None:
     get_vocabulary_annotator.cache_clear()
     get_reading_tracker.cache_clear()
     get_arc_generation_manager.cache_clear()
+
+
+def _mock_vocab_storage():
+    """Context manager that mocks UserVocabulary storage to avoid FileNotFoundError."""
+    from app.models.fsrs import FsrsCard
+    import datetime
+
+    fake_vocab = UserVocabulary(
+        user_id="test",
+        vocabulary=[
+            VocabularyItem(
+                id="item_1",
+                word="test",
+                meaning="test",
+                chapter_first_seen=1,
+                history_window=[1, 1, 1, 1, 1],
+                fsrs_card=FsrsCard(
+                    card_id=1001,
+                    state=1,
+                    due=datetime.datetime(2026, 1, 1, tzinfo=datetime.timezone.utc),
+                    last_review=None,
+                ),
+            )
+        ],
+    )
+    mock_storage = mock.MagicMock(spec=JSONStorage)
+    mock_storage.load.return_value = fake_vocab
+    return mock.patch(
+        "app.core.dependencies.get_user_vocab_storage",
+        return_value=mock_storage,
+    )
 
 
 # ── Settings ───────────────────────────────────────────────────────────
@@ -510,14 +541,17 @@ class TestGetArcGenerationManager:
         _clear_all_caches()
         from app.services.arc_generation_manager import ArcGenerationManager
 
-        manager = get_arc_generation_manager()
+        # Mock vocab storage to avoid FileNotFoundError on data/UserVocabulary.json
+        with _mock_vocab_storage():
+            manager = get_arc_generation_manager()
         assert isinstance(manager, ArcGenerationManager)
 
     def test_singleton_returns_same_instance(self) -> None:
         """Multiple calls must return the same ArcGenerationManager."""
         _clear_all_caches()
-        a1 = get_arc_generation_manager()
-        a2 = get_arc_generation_manager()
+        with _mock_vocab_storage():
+            a1 = get_arc_generation_manager()
+            a2 = get_arc_generation_manager()
         assert a1 is a2
 
 
@@ -542,7 +576,8 @@ class TestSingletonCaching:
     def test_cached_instances_are_identical(self, factory, name) -> None:  # noqa: ARG002
         """All stateful factories must return the same object on repeat calls."""
         _clear_all_caches()
-        with mock.patch.dict(os.environ, {"LLM_API_KEY": "sk-test"}, clear=True):
+        with mock.patch.dict(os.environ, {"LLM_API_KEY": "sk-test"}, clear=True), \
+             _mock_vocab_storage():
             inst1 = factory()
             inst2 = factory()
             assert inst1 is inst2, (

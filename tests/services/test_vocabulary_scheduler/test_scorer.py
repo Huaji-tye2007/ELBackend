@@ -111,12 +111,12 @@ class TestScoreContext:
             llm_client=mock_client,
         )
         assert result == {"x": 0.5, "y": 0.5}
-        mock_client.create.assert_not_called()
+        mock_client.chat_structured.assert_not_called()
 
     async def test_llm_client_success(self):
         """LLM client returns scores → parsed and clamped correctly."""
         mock_client = mock.AsyncMock()
-        mock_client.create.return_value = ContextScoreResponse(
+        mock_client.chat_structured.return_value = ContextScoreResponse(
             scores=[
                 ContextScoreEntry(item_id="a", score=0.9, reasoning="great fit"),
                 ContextScoreEntry(item_id="b", score=0.3, reasoning="poor fit"),
@@ -143,7 +143,7 @@ class TestScoreContext:
             llm_client=mock_client,
         )
         assert result == {"a": 0.9, "b": 0.3}
-        mock_client.create.assert_called_once()
+        mock_client.chat_structured.assert_called_once()
 
     async def test_llm_clamps_out_of_range_scores(self):
         """Scores outside [0.0, 1.0] are clamped (simulates LLM bypassing Pydantic)."""
@@ -152,7 +152,7 @@ class TestScoreContext:
         # values slightly outside [0,1] due to floating-point or model quirks.
         entry_a = ContextScoreEntry.model_construct(item_id="a", score=1.5)
         entry_b = ContextScoreEntry.model_construct(item_id="b", score=-0.5)
-        mock_client.create.return_value = ContextScoreResponse.model_construct(
+        mock_client.chat_structured.return_value = ContextScoreResponse.model_construct(
             scores=[entry_a, entry_b],
         )
         result = await score_context(
@@ -180,7 +180,7 @@ class TestScoreContext:
     async def test_llm_missing_candidate_defaults_to_0_5(self):
         """Candidates omitted by LLM get default 0.5."""
         mock_client = mock.AsyncMock()
-        mock_client.create.return_value = ContextScoreResponse(
+        mock_client.chat_structured.return_value = ContextScoreResponse(
             scores=[
                 ContextScoreEntry(item_id="a", score=0.8, reasoning="ok"),
             ]
@@ -210,7 +210,7 @@ class TestScoreContext:
     async def test_llm_hallucinated_ids_ignored(self):
         """LLM returns ids not in candidates → ignored."""
         mock_client = mock.AsyncMock()
-        mock_client.create.return_value = ContextScoreResponse(
+        mock_client.chat_structured.return_value = ContextScoreResponse(
             scores=[
                 ContextScoreEntry(item_id="a", score=0.8, reasoning="ok"),
                 ContextScoreEntry(item_id="ghost", score=1.0, reasoning="hallucinated"),
@@ -235,7 +235,7 @@ class TestScoreContext:
     async def test_llm_exception_falls_back_to_0_5(self):
         """Any LLM exception → all candidates get 0.5."""
         mock_client = mock.AsyncMock()
-        mock_client.create.side_effect = RuntimeError("LLM API down")
+        mock_client.chat_structured.side_effect = RuntimeError("LLM API down")
 
         result = await score_context(
             "text",

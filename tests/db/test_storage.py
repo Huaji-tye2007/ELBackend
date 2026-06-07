@@ -119,6 +119,20 @@ class TestSave:
         with pytest.raises((IsADirectoryError, OSError, PermissionError)):
             storage.save(vocab)
 
+    def test_save_parent_directory_missing_raises(self, tmp_path: Path):
+        """save() when parent directory doesn't exist raises FileNotFoundError.
+
+        data/ is .gitignored and may not exist on first run. Callers must
+        ensure the parent directory exists before calling JSONStorage.save().
+        See also: atomic_write_json — tmp_path.write_text() will fail if
+        the parent directory is missing.
+        """
+        p = tmp_path / "nonexistent_dir" / "vocab.json"
+        storage = JSONStorage(p, UserVocabulary)
+        vocab = _make_user_vocab()
+        with pytest.raises(FileNotFoundError):
+            storage.save(vocab)
+
 
 # ---------------------------------------------------------------------------
 # 3. Load
@@ -221,6 +235,17 @@ class TestRoundtrip:
         storage.save(vocab)
         loaded = storage.load()
         assert loaded.vocabulary[0].fsrs_card.last_review is None
+
+    def test_roundtrip_empty_vocabulary(self, tmp_path: Path):
+        """Roundtrip preserves an empty UserVocabulary (no items)."""
+        p = tmp_path / "vocab.json"
+        storage = JSONStorage(p, UserVocabulary)
+        vocab = UserVocabulary(user_id="empty_user", vocabulary=[])
+        storage.save(vocab)
+        loaded = storage.load()
+        assert loaded.user_id == "empty_user"
+        assert len(loaded.vocabulary) == 0
+        assert loaded.model_dump() == vocab.model_dump()
 
 
 # ---------------------------------------------------------------------------

@@ -897,7 +897,7 @@ class TestScheduleWithLLMClient:
         from app.llm.prompts import ContextScoreEntry, ContextScoreResponse
 
         mock_client = MagicMock()
-        mock_client.create = AsyncMock()
+        mock_client.chat_structured = AsyncMock()
 
         vocab_items = user_vocab["vocabulary"]
         entries = [
@@ -907,7 +907,7 @@ class TestScheduleWithLLMClient:
             )
             for item in vocab_items
         ]
-        mock_client.create.return_value = ContextScoreResponse(scores=entries)
+        mock_client.chat_structured.return_value = ContextScoreResponse(scores=entries)
 
         result = await schedule(
             arc_plan=arc_plan,
@@ -918,4 +918,4 @@ class TestScheduleWithLLMClient:
 
         first_target_words = result["episodes"][0].get("target_words", [])
         assert len(first_target_words) > 0, "No target_words allocated"
-        assert mock_client.create.call_count >= 1, "LLM client was never called"
+        assert mock_client.chat_structured.call_count >= 1, "LLM client was never called"

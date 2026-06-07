@@ -68,8 +68,8 @@ async def score_context(
         source_text: The episode's source text (chapter slice), or ``None``
             for side episodes that lack context.
         candidates: List of candidate VocabularyItem objects.
-        llm_client: Optional LLM client with an async ``create()`` method that
-            accepts ``messages`` and ``response_model``.  When ``None``, all
+        llm_client: Optional LLM client with an async ``chat_structured()`` method
+            that accepts ``messages`` and ``response_model``.  When ``None``, all
             candidates receive 0.5.
 
     Returns:
@@ -88,7 +88,7 @@ async def score_context(
 
     try:
         prompt = make_scoring_prompt(source_text, candidate_dicts)
-        response = await llm_client.create(
+        response = await llm_client.chat_structured(
             messages=prompt,
             response_model=ContextScoreResponse,
         )

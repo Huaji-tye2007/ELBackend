@@ -202,7 +202,7 @@
       "fsrs_card": {
         "card_id": 1717200012000,
         "state": 3,
-        "step": null,
+        "step": 0,
         "stability": 2.1,
         "difficulty": 0.7,
         "due": "2026-06-04T00:00:00Z",

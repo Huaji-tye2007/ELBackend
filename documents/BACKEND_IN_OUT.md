@@ -734,18 +734,21 @@ else:
 ```
 
 #### 4. FSRS 反序列化
+
+> **⚠️ 修正 (2026-06-07)**：原伪代码使用了不存在的 Card 字段 (`elapsed_days`, `scheduled_days`, `reps`, `lapses`)。
+> `fsrs.Card` 构造函数仅有 7 个字段：`card_id`, `state`, `step`, `stability`, `difficulty`, `due`, `last_review`。
+> `state` 必须用 `State(int)` 枚举，不能用裸 int。
+
 ```python
-from fsrs import Scheduler, Card
+from fsrs import Scheduler, Card, State
 
 card = Card(
+    card_id=fsrs_card["card_id"],                       # 毫秒时间戳
+    state=State(fsrs_card["state"]),                    # int → State Enum (必须)
+    step=fsrs_card.get("step"),                         # int | None
+    stability=fsrs_card["stability"],                   # float | None
+    difficulty=fsrs_card["difficulty"],                 # float | None
     due=datetime.fromisoformat(fsrs_card["due"]),       # ISO string → datetime
-    stability=fsrs_card["stability"],
-    difficulty=fsrs_card["difficulty"],
-    elapsed_days=fsrs_card["elapsed_days"],
-    scheduled_days=fsrs_card["scheduled_days"],
-    reps=fsrs_card["reps"],
-    lapses=fsrs_card["lapses"],
-    state=fsrs_card["state"],                           # int (1/2/3) → Card.State
     last_review=datetime.fromisoformat(fsrs_card["last_review"])
                   if fsrs_card.get("last_review") else None,
 )
@@ -771,15 +774,17 @@ if updated_card.due <= today_end:
 > **理由**：FSRS 短期复习可能会把 `due` 设得极近（几分钟后），但本应用场景用户每天只读一集，没必要在一天内反复弹出同一词。强制跨天可避免"刚看完立即又出"的体验问题。
 
 #### 7. 序列化回写
+
+> **⚠️ 修正 (2026-06-07)**：原伪代码引用了不存在的 Card 字段。`fsrs.Card` 仅有 7 个字段，回写时只更新实际存在的字段。
+
 ```python
-fsrs_card["state"] = updated_card.state.value          # Card.State Enum → int
-fsrs_card["due"] = updated_card.due.isoformat()        # datetime → ISO string
+# 将更新后的 fsrs.Card 序列化回 Pydantic FsrsCard
+fsrs_card["card_id"] = updated_card.card_id
+fsrs_card["state"] = updated_card.state.value          # State Enum → int
+fsrs_card["step"] = updated_card.step
 fsrs_card["stability"] = updated_card.stability
 fsrs_card["difficulty"] = updated_card.difficulty
-fsrs_card["elapsed_days"] = updated_card.elapsed_days
-fsrs_card["scheduled_days"] = updated_card.scheduled_days
-fsrs_card["reps"] = updated_card.reps
-fsrs_card["lapses"] = updated_card.lapses
+fsrs_card["due"] = updated_card.due.isoformat()        # datetime → ISO string
 fsrs_card["last_review"] = datetime.now(timezone.utc).isoformat()
 ```
 

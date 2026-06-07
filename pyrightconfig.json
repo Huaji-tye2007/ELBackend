@@ -1,0 +1,6 @@
+{
+  "include": ["app"],
+  "typeCheckingMode": "basic",
+  "reportMissingTypeArgument": false,
+  "pythonVersion": "3.10"
+}

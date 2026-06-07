@@ -9,7 +9,7 @@
 ## 1. 仓库定位
 
 - **纯后端仓库**。前端用 Node 单独开发，本仓库只输出标准 FastAPI HTTP API。
-- **代码已落地**（截至 2026-06-07）：采用 `app/` 包结构。实际规模：20+ Pydantic 模型、14 个 service 类/包、15 个 API 端点、560 个测试。部分模块仍为骨架（stub），详见 §9 标注。
+- **代码已落地**（截至 2026-06-07）：采用 `app/` 包结构。实际规模：20+ Pydantic 模型、14 个 service 类/包、15 个 API 端点、706 个测试（Phase 2 集成后）。所有业务模块已落地，仅 `vocabulary_preprocessor.py` 为骨架（stub），详见 §9 标注。
 - **设计真理之源**（动手前必读，按编号优先级）：
   1. `documents/product_analysis.md` — 产品定位、设计原则、核心循环。涉及交互/取舍时按此对齐。
   2. `documents/BACKEND_IN_OUT.md` — 系统架构 V1.5：数据流、9 个模块的输入/输出/职责、JSON 数据结构。**但 §6 FormatSpec 已作废，见下条**。
@@ -162,16 +162,16 @@ ELBackend/
 │   │   ├── health.py                  # ✅
 │   │   └── schemas.py                  # ✅ 请求 / 响应 schema（与领域模型解耦）
 │   ├── services/                       # ✅ 14 个 service 类/包（详见 §11）
-│   │   ├── vocabulary_preprocessor.py  # ❌ 未落地（未来任务）
+│   │   ├── vocabulary_preprocessor.py  # ✅ 已落地（WordSenseDB+FSRS 卡片初始化）
 │   │   ├── novel_preprocessor/         # ✅ 子包（T14）：preprocessor.py + chapter_splitter.py
 │   │   ├── arc_planner.py              # ✅
 │   │   ├── vocabulary_scheduler/       # ✅ 子包：scheduler.py / pools.py / scorer.py / allocator.py
 │   │   ├── story_rewriter/             # ✅ 子包（T15）：rewriter.py
 │   │   ├── vocabulary_annotator/       # ✅ 子包（T16）：annotator.py
-│   │   ├── episode_formatter.py        # ❌ 未落地（未来任务）
-│   │   ├── reading_tracker.py          # ⏳ 骨架（stub）
+│   │   ├── episode_formatter.py        # ✅ 已落地（FormatSpec v3 + atomic_write_json）
+│   │   ├── reading_tracker.py          # ✅ 已落地（文件持久化 + 进度追踪）
 │   │   ├── mastery_evaluator.py        # ✅
-│   │   └── arc_generation_manager.py   # ⏳ 骨架（stub），异步编排器（§14）
+│   │   └── arc_generation_manager.py   # ✅ 已落地（6 阶段状态机 + checkpoint + 重试）
 │   ├── llm/
 │   │   ├── client.py                   # ✅ InstructorClient
 │   │   └── prompts.py                  # ✅

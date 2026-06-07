@@ -114,7 +114,7 @@ def sample_arc_plan() -> ArcPlan:
 class _CacheSpec:
     """Spec for mock.create_autospec — matches JSONStorage.load() interface."""
 
-    async def load(self, episode_id: int | None = None) -> dict: ...  # noqa: ARG002
+    def load(self, episode_id: int | None = None) -> dict: ...  # noqa: ARG002
 
 
 @pytest.fixture
@@ -122,7 +122,7 @@ def mock_episode_cache():
     """Mock episode cache using create_autospec pattern (AGENTS.md §16.3)."""
     cache = mock.create_autospec(_CacheSpec, instance=True)
 
-    async def _load(episode_id: int | None = None) -> dict:  # noqa: ARG001
+    def _load(episode_id: int | None = None) -> dict:  # noqa: ARG001
         return load_fixture_json("episode_cache_ep30")
 
     cache.load.side_effect = _load

@@ -131,7 +131,7 @@ class ArcPlanner:
         if config:
             self.config.update(config)
 
-    async def plan_next_arc(
+    def plan_next_arc(
         self,
         arc_id: str,
         progress: ReadingProgress,
@@ -158,7 +158,7 @@ class ArcPlanner:
         self._validate_inputs(progress=progress, chapters=chapters)
 
         # 2. Build episodes
-        episodes, end_chapter_id, end_word_offset = await self._build_episodes(
+        episodes, end_chapter_id, end_word_offset = self._build_episodes(
             arc_id=arc_id,
             progress=progress,
             chapters=chapters,
@@ -283,7 +283,7 @@ class ArcPlanner:
         )
         return qualifying >= self.config["side_ep_trigger_min_words"]
 
-    async def _read_previous_context(
+    def _read_previous_context(
         self,
         episode_cache: Any,  # JSONStorage duck-type (has async .load())
         prev_arc: ArcPlan | None,
@@ -314,7 +314,7 @@ class ArcPlanner:
                 return []
             last_ep_id = prev_episodes[-1].episode_id
 
-            cached = await episode_cache.load(episode_id=last_ep_id)
+            cached = episode_cache.load(episode_id=last_ep_id)
 
             if isinstance(cached, dict):
                 # Return only the last N messages as previous_context
@@ -327,7 +327,7 @@ class ArcPlanner:
         except Exception:
             return []
 
-    async def _build_episodes(
+    def _build_episodes(
         self,
         arc_id: str,
         progress: ReadingProgress,
@@ -397,7 +397,7 @@ class ArcPlanner:
                     episode_id=episode_id,
                     episode_type="side",
                     source_text=None,
-                    previous_context=await self._read_previous_context(
+                    previous_context=self._read_previous_context(
                         episode_cache=episode_cache,
                         prev_arc=prev_arc,
                         episode_index=ep_index,
@@ -429,7 +429,7 @@ class ArcPlanner:
                             episode_id=episode_id,
                             episode_type="side",
                             source_text=None,
-                            previous_context=await self._read_previous_context(
+                            previous_context=self._read_previous_context(
                                 episode_cache=episode_cache,
                                 prev_arc=prev_arc,
                                 episode_index=ep_index,
@@ -448,7 +448,7 @@ class ArcPlanner:
                 episode_id=episode_id,
                 episode_type="main",
                 source_text=source_text,
-                previous_context=await self._read_previous_context(
+                previous_context=self._read_previous_context(
                     episode_cache=episode_cache,
                     prev_arc=prev_arc,
                     episode_index=ep_index,
@@ -467,7 +467,7 @@ class ArcPlanner:
                             episode_id=episode_id + 1,
                             episode_type="side",
                             source_text=None,
-                            previous_context=await self._read_previous_context(
+                            previous_context=self._read_previous_context(
                                 episode_cache=episode_cache,
                                 prev_arc=prev_arc,
                                 episode_index=ep_index,

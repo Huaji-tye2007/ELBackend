@@ -71,22 +71,22 @@ def _make_reading_progress(
 class TestConfigConstants:
     """Verify every module-level constant has the expected value."""
 
-    async def test_default_episodes_per_arc(self) -> None:
+    def test_default_episodes_per_arc(self) -> None:
         assert DEFAULT_EPISODES_PER_ARC == 10
 
-    async def test_min_episode_words(self) -> None:
+    def test_min_episode_words(self) -> None:
         assert MIN_EPISODE_WORDS == 400
 
-    async def test_max_episode_words(self) -> None:
+    def test_max_episode_words(self) -> None:
         assert MAX_EPISODE_WORDS == 600
 
-    async def test_overlap_words(self) -> None:
+    def test_overlap_words(self) -> None:
         assert OVERLAP_WORDS == 100
 
-    async def test_side_ep_reject_threshold(self) -> None:
+    def test_side_ep_reject_threshold(self) -> None:
         assert SIDE_EP_REJECT_THRESHOLD == 3
 
-    async def test_side_ep_trigger_min_words(self) -> None:
+    def test_side_ep_trigger_min_words(self) -> None:
         assert SIDE_EP_TRIGGER_MIN_WORDS == 5
 
 
@@ -98,7 +98,7 @@ class TestConfigConstants:
 class TestSliceNormalCases:
     """Happy-path slicing with enough words available."""
 
-    async def test_slice_normal_from_start(self) -> None:
+    def test_slice_normal_from_start(self) -> None:
         """1000-word text, start=0 → returns slice and next_offset."""
         text = _make_text(1000)
         sliced, next_start = _slice_episode_text(
@@ -115,7 +115,7 @@ class TestSliceNormalCases:
         # end_offset = start + MAX_EPISODE_WORDS = 600
         assert next_start == MAX_EPISODE_WORDS - OVERLAP_WORDS  # 500
 
-    async def test_slice_from_mid_position(self) -> None:
+    def test_slice_from_mid_position(self) -> None:
         """1000-word text, start=200 → returns slice starting at word_200."""
         text = _make_text(1000)
         sliced, _next_start = _slice_episode_text(
@@ -131,7 +131,7 @@ class TestSliceNormalCases:
         assert words[0] == "word_200"
         assert len(words) == MAX_EPISODE_WORDS
 
-    async def test_slice_overlap_calculation(self) -> None:
+    def test_slice_overlap_calculation(self) -> None:
         """Verify next_start_word_offset = end_offset - overlap_words."""
         text = _make_text(1000)
         _sliced, next_start = _slice_episode_text(
@@ -145,7 +145,7 @@ class TestSliceNormalCases:
         # end_offset = 600 (start 0 + max 600), overlap = 100 → next = 500
         assert next_start == 500
 
-    async def test_slice_continuity_with_overlap(self) -> None:
+    def test_slice_continuity_with_overlap(self) -> None:
         """Two consecutive slices should overlap correctly."""
         text = _make_text(1500)
 
@@ -169,7 +169,7 @@ class TestSliceNormalCases:
             (600, 600),  # exact max → returns all
         ],
     )
-    async def test_slice_at_various_word_counts(
+    def test_slice_at_various_word_counts(
         self, word_count: int, expected_slice_words: int
     ) -> None:
         """When total words <= max, return all available words."""
@@ -187,7 +187,7 @@ class TestSliceNormalCases:
 class TestSliceEdgeCases:
     """Edge cases: short text, empty text, overlap boundaries."""
 
-    async def test_slice_short_text(self) -> None:
+    def test_slice_short_text(self) -> None:
         """50-word text with min=400 → returns all 50 words."""
         text = _make_text(50)
         sliced, next_start = _slice_episode_text(text, 0, 400, 600, 100)
@@ -196,14 +196,14 @@ class TestSliceEdgeCases:
         # next_start = 50 - 100 = -50, clamped to 0
         assert next_start == 0
 
-    async def test_slice_empty_text(self) -> None:
+    def test_slice_empty_text(self) -> None:
         """Empty string → returns ("", 0)."""
         sliced, next_start = _slice_episode_text("", 0, 400, 600, 100)
 
         assert sliced == ""
         assert next_start == 0
 
-    async def test_slice_past_end(self) -> None:
+    def test_slice_past_end(self) -> None:
         """start_word_offset beyond text length → returns ("", 0)."""
         text = _make_text(100)
         sliced, next_start = _slice_episode_text(text, 200, 400, 600, 100)
@@ -211,14 +211,14 @@ class TestSliceEdgeCases:
         assert sliced == ""
         assert next_start == 0
 
-    async def test_slice_exact_remaining_min(self) -> None:
+    def test_slice_exact_remaining_min(self) -> None:
         """Remaining words exactly equal to min at start."""
         text = _make_text(700)  # start at 300, remaining = 400
         sliced, _next_start = _slice_episode_text(text, 300, 400, 600, 100)
 
         assert len(sliced.split()) == 400
 
-    async def test_slice_overlap_clamped(self) -> None:
+    def test_slice_overlap_clamped(self) -> None:
         """When overlap would push next_start before start, clamp to start."""
         # 50 words, min=10, max=30, overlap=100
         # remaining = 50, end = 50 (less than max 30? No, remaining is 50, end=30)
@@ -232,7 +232,7 @@ class TestSliceEdgeCases:
 class TestSliceRealWorld:
     """Scenarios mimicking actual episode slicing from novel text."""
 
-    async def test_natural_language_text(self) -> None:
+    def test_natural_language_text(self) -> None:
         """Slice behaves correctly with real English sentences."""
         text = " ".join(
             [
@@ -246,7 +246,7 @@ class TestSliceRealWorld:
         assert 400 <= len(words) <= 600
         assert next_start > 0
 
-    async def test_punctuation_preserved(self) -> None:
+    def test_punctuation_preserved(self) -> None:
         """Punctuation should remain intact in sliced text."""
         text = "Hello, world! " * 600  # 1200 "words" (including punct)
         sliced, _next = _slice_episode_text(text, 0, 400, 600, 100)
@@ -264,21 +264,21 @@ class TestSliceRealWorld:
 class TestArcPlannerSkeleton:
     """Verify ArcPlanner class structure and basic behavior."""
 
-    async def test_init_accepts_config(self) -> None:
+    def test_init_accepts_config(self) -> None:
         """ArcPlanner accepts optional config dict."""
         from app.services.arc_planner import ArcPlanner  # noqa: E402
 
         planner = ArcPlanner()
         assert planner is not None
 
-    async def test_init_with_config(self) -> None:
+    def test_init_with_config(self) -> None:
         """Config values override defaults."""
         from app.services.arc_planner import ArcPlanner  # noqa: E402
 
         planner = ArcPlanner(config={"min_episode_words": 300})
         assert planner.config["min_episode_words"] == 300
 
-    async def test_init_default_config(self) -> None:
+    def test_init_default_config(self) -> None:
         """Default config uses module-level constants."""
         from app.services.arc_planner import ArcPlanner  # noqa: E402
 
@@ -287,7 +287,7 @@ class TestArcPlannerSkeleton:
         assert planner.config["max_episode_words"] == 600
         assert planner.config["overlap_words"] == 100
 
-    async def test_plan_next_arc_signature(self) -> None:
+    def test_plan_next_arc_signature(self) -> None:
         """plan_next_arc accepts arc_id, progress, chapters, prev_arc, episode_cache."""
         from app.services.arc_planner import ArcPlanner  # noqa: E402
         import inspect
@@ -301,12 +301,12 @@ class TestArcPlannerSkeleton:
         assert "prev_arc" in params
         assert "episode_cache" in params
 
-    async def test_plan_next_arc_minimal(self) -> None:
+    def test_plan_next_arc_minimal(self) -> None:
         """plan_next_arc returns valid ArcPlan with minimal chapter."""
         from app.services.arc_planner import ArcPlanner  # noqa: E402
 
         planner = ArcPlanner()
-        result = await planner.plan_next_arc(
+        result = planner.plan_next_arc(
             arc_id="arc_001",
             progress=_make_reading_progress(),
             chapters=[_make_chapter(1, "Ch1", "hello world")],
@@ -321,7 +321,7 @@ class TestArcPlannerSkeleton:
         assert isinstance(end_ch, int)
         assert isinstance(end_off, int)
 
-    async def test_validate_inputs_raises_on_invalid(self) -> None:
+    def test_validate_inputs_raises_on_invalid(self) -> None:
         """_validate_inputs raises ValueError on invalid progress."""
         from app.services.arc_planner import ArcPlanner  # noqa: E402
 
@@ -337,7 +337,7 @@ class TestArcPlannerSkeleton:
                 chapters=[_make_chapter(1, raw_text="hello")],
             )
 
-    async def test_validate_inputs_empty_chapters(self) -> None:
+    def test_validate_inputs_empty_chapters(self) -> None:
         """_validate_inputs raises ValueError when chapters list is empty."""
         from app.services.arc_planner import ArcPlanner  # noqa: E402
 
@@ -348,7 +348,7 @@ class TestArcPlannerSkeleton:
                 chapters=[],
             )
 
-    async def test_validate_inputs_valid_passes(self) -> None:
+    def test_validate_inputs_valid_passes(self) -> None:
         """_validate_inputs does not raise on valid input."""
         from app.services.arc_planner import ArcPlanner  # noqa: E402
 
@@ -368,7 +368,7 @@ class TestArcPlannerSkeleton:
 class TestExtractSourceText:
     """TDD tests for _extract_source_text — walks chapters, slices text."""
 
-    async def test_extract_from_chapter_start(
+    def test_extract_from_chapter_start(
         self, sample_chapters: list[Chapter]
     ) -> None:
         """Extract a slice from the beginning of a chapter."""
@@ -386,7 +386,7 @@ class TestExtractSourceText:
         assert end_ch == 1  # all within chapter 1
         assert end_off == 500  # extracted exactly 500 words
 
-    async def test_extract_from_mid_chapter(
+    def test_extract_from_mid_chapter(
         self, sample_chapters: list[Chapter]
     ) -> None:
         """Extract starting from a non-zero word offset."""
@@ -403,7 +403,7 @@ class TestExtractSourceText:
         assert end_ch == 1
         assert end_off == 700  # started at 200, took 500, ended at 700
 
-    async def test_extract_cross_chapter_boundary(
+    def test_extract_cross_chapter_boundary(
         self, sample_chapters: list[Chapter]
     ) -> None:
         """When one chapter runs out of words, continue from next chapter."""
@@ -423,7 +423,7 @@ class TestExtractSourceText:
         # Ch2 started at offset 0, took 500-211=289 words
         assert end_off == 289
 
-    async def test_extract_text_exhaustion_short(
+    def test_extract_text_exhaustion_short(
         self, sample_chapters: list[Chapter]
     ) -> None:
         """When total text is insufficient, return what's available."""
@@ -441,7 +441,7 @@ class TestExtractSourceText:
         assert len(text.split()) == 118
         assert end_ch == 3
 
-    async def test_extract_exactly_on_chapter_boundary(
+    def test_extract_exactly_on_chapter_boundary(
         self, sample_chapters: list[Chapter]
     ) -> None:
         """Extract that lands exactly at end of a chapter."""
@@ -459,7 +459,7 @@ class TestExtractSourceText:
         assert end_ch == 2
         assert end_off == 874
 
-    async def test_extract_skip_to_next_chapter(
+    def test_extract_skip_to_next_chapter(
         self, sample_chapters: list[Chapter]
     ) -> None:
         """Extract text that starts mid-chapter and needs one full skip."""
@@ -477,7 +477,7 @@ class TestExtractSourceText:
         assert len(text.split()) == 600
         assert end_ch == 2
 
-    async def test_extract_zero_words(self, sample_chapters: list[Chapter]) -> None:
+    def test_extract_zero_words(self, sample_chapters: list[Chapter]) -> None:
         """Extract 0 words returns empty string at current position."""
         from app.services.arc_planner import ArcPlanner  # noqa: E402
 
@@ -501,13 +501,13 @@ class TestExtractSourceText:
 class TestBuildEpisodes:
     """TDD tests for _build_episodes — produces EpisodeSlot list."""
 
-    async def test_builds_correct_count(self, sample_chapters: list[Chapter]) -> None:
+    def test_builds_correct_count(self, sample_chapters: list[Chapter]) -> None:
         """With enough text, produces exactly episodes_per_arc episodes (10)."""
         from app.services.arc_planner import ArcPlanner  # noqa: E402
 
         planner = ArcPlanner()
         progress = _make_reading_progress()
-        episodes, _end_ch, _end_off = await planner._build_episodes(
+        episodes, _end_ch, _end_off = planner._build_episodes(
             arc_id="arc_003",
             progress=progress,
             chapters=sample_chapters,
@@ -519,13 +519,13 @@ class TestBuildEpisodes:
         # All are main episodes (no side trigger since prev_arc=None)
         assert all(ep.episode_type == "main" for ep in episodes)
 
-    async def test_episodes_have_overlap(self, sample_chapters: list[Chapter]) -> None:
+    def test_episodes_have_overlap(self, sample_chapters: list[Chapter]) -> None:
         """Consecutive main episodes overlap by OVERLAP_WORDS (100 words)."""
         from app.services.arc_planner import ArcPlanner  # noqa: E402
 
         planner = ArcPlanner()
         progress = _make_reading_progress()
-        episodes, _, _ = await planner._build_episodes(
+        episodes, _, _ = planner._build_episodes(
             arc_id="arc_003",
             progress=progress,
             chapters=sample_chapters,
@@ -539,7 +539,7 @@ class TestBuildEpisodes:
                 if len(ep1_words) >= 100 and len(ep2_words) >= 100:
                     assert ep1_words[-100:] == ep2_words[:100]
 
-    async def test_episodes_have_source_text_in_range(
+    def test_episodes_have_source_text_in_range(
         self, sample_chapters: list[Chapter]
     ) -> None:
         """Each main episode's source_text has 400-600 words (except possibly last)."""
@@ -547,7 +547,7 @@ class TestBuildEpisodes:
 
         planner = ArcPlanner()
         progress = _make_reading_progress()
-        episodes, _, _ = await planner._build_episodes(
+        episodes, _, _ = planner._build_episodes(
             arc_id="arc_003",
             progress=progress,
             chapters=sample_chapters,
@@ -564,7 +564,7 @@ class TestBuildEpisodes:
                     <= planner.config["max_episode_words"]
                 ), f"Episode {i}: word count {wc} not in range"
 
-    async def test_episodes_initialize_target_words_empty(
+    def test_episodes_initialize_target_words_empty(
         self, sample_chapters: list[Chapter]
     ) -> None:
         """All episodes have target_words initialized to empty list."""
@@ -572,7 +572,7 @@ class TestBuildEpisodes:
 
         planner = ArcPlanner()
         progress = _make_reading_progress()
-        episodes, _, _ = await planner._build_episodes(
+        episodes, _, _ = planner._build_episodes(
             arc_id="arc_003",
             progress=progress,
             chapters=sample_chapters,
@@ -582,7 +582,7 @@ class TestBuildEpisodes:
         for ep in episodes:
             assert ep.target_words == []
 
-    async def test_episodes_initialize_previous_context_empty(
+    def test_episodes_initialize_previous_context_empty(
         self, sample_chapters: list[Chapter]
     ) -> None:
         """When prev_arc=None, all episodes have previous_context = []."""
@@ -590,7 +590,7 @@ class TestBuildEpisodes:
 
         planner = ArcPlanner()
         progress = _make_reading_progress()
-        episodes, _, _ = await planner._build_episodes(
+        episodes, _, _ = planner._build_episodes(
             arc_id="arc_003",
             progress=progress,
             chapters=sample_chapters,
@@ -600,7 +600,7 @@ class TestBuildEpisodes:
         for ep in episodes:
             assert ep.previous_context == []
 
-    async def test_episode_ids_sequential_from_1(
+    def test_episode_ids_sequential_from_1(
         self, sample_chapters: list[Chapter]
     ) -> None:
         """Episode IDs are globally sequential, starting from 1 when prev_arc=None."""
@@ -608,7 +608,7 @@ class TestBuildEpisodes:
 
         planner = ArcPlanner()
         progress = _make_reading_progress()
-        episodes, _, _ = await planner._build_episodes(
+        episodes, _, _ = planner._build_episodes(
             arc_id="arc_003",
             progress=progress,
             chapters=sample_chapters,
@@ -618,13 +618,13 @@ class TestBuildEpisodes:
         for i, ep in enumerate(episodes):
             assert ep.episode_id == i + 1
 
-    async def test_return_end_position(self, sample_chapters: list[Chapter]) -> None:
+    def test_return_end_position(self, sample_chapters: list[Chapter]) -> None:
         """Returns (episodes, end_chapter_id, end_word_offset) tuple."""
         from app.services.arc_planner import ArcPlanner  # noqa: E402
 
         planner = ArcPlanner()
         progress = _make_reading_progress()
-        episodes, end_ch, end_off = await planner._build_episodes(
+        episodes, end_ch, end_off = planner._build_episodes(
             arc_id="arc_003",
             progress=progress,
             chapters=sample_chapters,
@@ -645,7 +645,7 @@ class TestBuildEpisodes:
 class TestSideEpisodeDetection:
     """TDD tests for _should_add_side_episode."""
 
-    async def test_side_ep_triggered(self) -> None:
+    def test_side_ep_triggered(self) -> None:
         """6 pending_words with rejected_count >= 3 → side episode triggered."""
         from app.services.arc_planner import ArcPlanner  # noqa: E402
 
@@ -666,7 +666,7 @@ class TestSideEpisodeDetection:
         )
         assert planner._should_add_side_episode(prev_arc) is True
 
-    async def test_side_ep_not_triggered_below_min(self) -> None:
+    def test_side_ep_not_triggered_below_min(self) -> None:
         """Only 4 qualifying words → no side episode."""
         from app.services.arc_planner import ArcPlanner  # noqa: E402
 
@@ -682,7 +682,7 @@ class TestSideEpisodeDetection:
         )
         assert planner._should_add_side_episode(prev_arc) is False
 
-    async def test_side_ep_not_triggered_low_rejected(self) -> None:
+    def test_side_ep_not_triggered_low_rejected(self) -> None:
         """5+ words but none have rejected_count >= 3 → no side episode."""
         from app.services.arc_planner import ArcPlanner  # noqa: E402
 
@@ -699,14 +699,14 @@ class TestSideEpisodeDetection:
         )
         assert planner._should_add_side_episode(prev_arc) is False
 
-    async def test_side_ep_first_arc_no_pending(self) -> None:
+    def test_side_ep_first_arc_no_pending(self) -> None:
         """prev_arc=None → no side episode."""
         from app.services.arc_planner import ArcPlanner  # noqa: E402
 
         planner = ArcPlanner()
         assert planner._should_add_side_episode(None) is False
 
-    async def test_side_ep_empty_pending_words(self) -> None:
+    def test_side_ep_empty_pending_words(self) -> None:
         """prev_arc with empty pending_words → no side episode."""
         from app.services.arc_planner import ArcPlanner  # noqa: E402
 
@@ -723,7 +723,7 @@ class TestSideEpisodeDetection:
 class TestSideEpisodeInBuild:
     """Integration: side episode affects _build_episodes output."""
 
-    async def test_side_ep_at_index_9(self, sample_chapters: list[Chapter]) -> None:
+    def test_side_ep_at_index_9(self, sample_chapters: list[Chapter]) -> None:
         """When triggered, episode 9 (0-indexed) is side with source_text=None."""
         from app.services.arc_planner import ArcPlanner  # noqa: E402
 
@@ -743,7 +743,7 @@ class TestSideEpisodeInBuild:
                 EpisodeSlot(episode_id=i, episode_type="main") for i in range(21, 31)
             ],
         )
-        episodes, _, _ = await planner._build_episodes(
+        episodes, _, _ = planner._build_episodes(
             arc_id="arc_003",
             progress=progress,
             chapters=sample_chapters,
@@ -757,7 +757,7 @@ class TestSideEpisodeInBuild:
             assert episodes[9].episode_type == "side"
             assert episodes[9].source_text is None
 
-    async def test_side_ep_before_text_exhaustion(self) -> None:
+    def test_side_ep_before_text_exhaustion(self) -> None:
         """Side episode inserted before break when text runs out before configured position."""
         from app.services.arc_planner import ArcPlanner  # noqa: E402
 
@@ -783,7 +783,7 @@ class TestSideEpisodeInBuild:
 
         # Default config: side_ep at position -1 (last, i.e., index 9 of 10)
         planner = ArcPlanner()
-        episodes, _, _ = await planner._build_episodes(
+        episodes, _, _ = planner._build_episodes(
             arc_id="arc_003",
             progress=progress,
             chapters=chapters,
@@ -800,7 +800,7 @@ class TestSideEpisodeInBuild:
         main_eps = [ep for ep in episodes if ep.episode_type == "main"]
         assert len(main_eps) >= 1
 
-    async def test_side_ep_not_at_wrong_position(
+    def test_side_ep_not_at_wrong_position(
         self, sample_chapters: list[Chapter]
     ) -> None:
         """Side episode only appears at configured position or before text exhaustion."""
@@ -822,7 +822,7 @@ class TestSideEpisodeInBuild:
                 EpisodeSlot(episode_id=i, episode_type="main") for i in range(21, 31)
             ],
         )
-        episodes, _, _ = await planner._build_episodes(
+        episodes, _, _ = planner._build_episodes(
             arc_id="arc_003",
             progress=progress,
             chapters=sample_chapters,
@@ -841,7 +841,7 @@ class TestSideEpisodeInBuild:
                     f"Side ep at index {i} should be near end of {len(episodes)}"
                 )
 
-    async def test_no_side_ep_when_not_triggered(
+    def test_no_side_ep_when_not_triggered(
         self, sample_chapters: list[Chapter]
     ) -> None:
         """prev_arc without qualifying words → all episodes are main."""
@@ -859,7 +859,7 @@ class TestSideEpisodeInBuild:
                 EpisodeSlot(episode_id=i, episode_type="main") for i in range(21, 31)
             ],
         )
-        episodes, _, _ = await planner._build_episodes(
+        episodes, _, _ = planner._build_episodes(
             arc_id="arc_003",
             progress=progress,
             chapters=sample_chapters,
@@ -868,7 +868,7 @@ class TestSideEpisodeInBuild:
         )
         assert all(ep.episode_type == "main" for ep in episodes)
 
-    async def test_episode_ids_continue_with_prev_arc(
+    def test_episode_ids_continue_with_prev_arc(
         self, sample_chapters: list[Chapter]
     ) -> None:
         """Episode IDs continue from prev_arc.episodes[-1].episode_id + 1."""
@@ -889,7 +889,7 @@ class TestSideEpisodeInBuild:
                 EpisodeSlot(episode_id=i, episode_type="main") for i in range(21, 31)
             ],
         )
-        episodes, _, _ = await planner._build_episodes(
+        episodes, _, _ = planner._build_episodes(
             arc_id="arc_003",
             progress=progress,
             chapters=sample_chapters,
@@ -908,19 +908,19 @@ class TestSideEpisodeInBuild:
 class TestPreviousContext:
     """TDD tests for _read_previous_context."""
 
-    async def test_first_arc_returns_empty(self) -> None:
+    def test_first_arc_returns_empty(self) -> None:
         """prev_arc=None → empty list."""
         from app.services.arc_planner import ArcPlanner  # noqa: E402
 
         planner = ArcPlanner()
-        result = await planner._read_previous_context(
+        result = planner._read_previous_context(
             episode_cache=None,
             prev_arc=None,
             episode_index=0,
         )
         assert result == []
 
-    async def test_non_first_arc_ep0_reads_cache(self, mock_episode_cache) -> None:
+    def test_non_first_arc_ep0_reads_cache(self, mock_episode_cache) -> None:
         """Episode 0 of non-first arc reads from episode cache."""
         from app.services.arc_planner import ArcPlanner  # noqa: E402
 
@@ -929,7 +929,7 @@ class TestPreviousContext:
             arc_id="2",
             episodes=[EpisodeSlot(episode_id=30, episode_type="main")],
         )
-        result = await planner._read_previous_context(
+        result = planner._read_previous_context(
             episode_cache=mock_episode_cache,
             prev_arc=prev_arc,
             episode_index=0,
@@ -939,7 +939,7 @@ class TestPreviousContext:
         assert len(result) > 0
         assert len(result) <= 10  # truncated to PREVIOUS_CONTEXT_MESSAGE_COUNT
 
-    async def test_episodes_1_and_up_always_empty(self, mock_episode_cache) -> None:
+    def test_episodes_1_and_up_always_empty(self, mock_episode_cache) -> None:
         """Episodes 1+ always get empty previous_context, even with cache."""
         from app.services.arc_planner import ArcPlanner  # noqa: E402
 
@@ -949,14 +949,14 @@ class TestPreviousContext:
             episodes=[EpisodeSlot(episode_id=30, episode_type="main")],
         )
         for i in [1, 2, 5, 9]:
-            result = await planner._read_previous_context(
+            result = planner._read_previous_context(
                 episode_cache=mock_episode_cache,
                 prev_arc=prev_arc,
                 episode_index=i,
             )
             assert result == [], f"Episode {i} should have empty context"
 
-    async def test_cache_is_none_returns_empty(self) -> None:
+    def test_cache_is_none_returns_empty(self) -> None:
         """When episode_cache is None, return empty list gracefully."""
         from app.services.arc_planner import ArcPlanner  # noqa: E402
 
@@ -965,19 +965,19 @@ class TestPreviousContext:
             arc_id="2",
             episodes=[EpisodeSlot(episode_id=30, episode_type="main")],
         )
-        result = await planner._read_previous_context(
+        result = planner._read_previous_context(
             episode_cache=None,
             prev_arc=prev_arc,
             episode_index=0,
         )
         assert result == []
 
-    async def test_prev_arc_none_returns_empty(self, mock_episode_cache) -> None:
+    def test_prev_arc_none_returns_empty(self, mock_episode_cache) -> None:
         """prev_arc=None takes priority — returns empty."""
         from app.services.arc_planner import ArcPlanner  # noqa: E402
 
         planner = ArcPlanner()
-        result = await planner._read_previous_context(
+        result = planner._read_previous_context(
             episode_cache=mock_episode_cache,
             prev_arc=None,
             episode_index=0,
@@ -988,7 +988,7 @@ class TestPreviousContext:
 class TestPreviousContextIntegration:
     """Integration: _build_episodes sets previous_context correctly."""
 
-    async def test_integration_first_arc_empty_context(
+    def test_integration_first_arc_empty_context(
         self,
         sample_chapters: list[Chapter],
     ) -> None:
@@ -997,7 +997,7 @@ class TestPreviousContextIntegration:
 
         planner = ArcPlanner()
         progress = _make_reading_progress()
-        episodes, _, _ = await planner._build_episodes(
+        episodes, _, _ = planner._build_episodes(
             arc_id="arc_001",
             progress=progress,
             chapters=sample_chapters,
@@ -1007,7 +1007,7 @@ class TestPreviousContextIntegration:
         for ep in episodes:
             assert ep.previous_context == []
 
-    async def test_integration_ep0_has_context(
+    def test_integration_ep0_has_context(
         self,
         sample_chapters: list[Chapter],
         mock_episode_cache,
@@ -1021,7 +1021,7 @@ class TestPreviousContextIntegration:
             arc_id="2",
             episodes=[EpisodeSlot(episode_id=30, episode_type="main")],
         )
-        episodes, _, _ = await planner._build_episodes(
+        episodes, _, _ = planner._build_episodes(
             arc_id="arc_003",
             progress=progress,
             chapters=sample_chapters,
@@ -1038,13 +1038,13 @@ class TestPreviousContextIntegration:
 class TestEndPositionTracking:
     """Verify _build_episodes returns correct end position."""
 
-    async def test_end_position_first_arc(self, sample_chapters: list[Chapter]) -> None:
+    def test_end_position_first_arc(self, sample_chapters: list[Chapter]) -> None:
         """End position reflects last consumed text position."""
         from app.services.arc_planner import ArcPlanner  # noqa: E402
 
         planner = ArcPlanner()
         progress = _make_reading_progress()
-        episodes, end_ch, end_off = await planner._build_episodes(
+        episodes, end_ch, end_off = planner._build_episodes(
             arc_id="arc_001",
             progress=progress,
             chapters=sample_chapters,
@@ -1059,7 +1059,7 @@ class TestEndPositionTracking:
         if episodes:
             assert end_off > 0, "End position should be beyond start"
 
-    async def test_end_position_starts_at_progress(
+    def test_end_position_starts_at_progress(
         self, sample_chapters: list[Chapter]
     ) -> None:
         """End position reflects starting offset."""
@@ -1068,7 +1068,7 @@ class TestEndPositionTracking:
         planner = ArcPlanner()
         # Start at chapter 1, offset 0.0
         progress_zero = _make_reading_progress(chapter_offset=0.0)
-        episodes_zero, end_ch_0, end_off_0 = await planner._build_episodes(
+        episodes_zero, end_ch_0, end_off_0 = planner._build_episodes(
             arc_id="arc_001",
             progress=progress_zero,
             chapters=sample_chapters,
@@ -1077,7 +1077,7 @@ class TestEndPositionTracking:
         )
         # Start at chapter 1, offset 0.3
         progress_mid = _make_reading_progress(chapter_offset=0.3)
-        episodes_mid, end_ch_mid, end_off_mid = await planner._build_episodes(
+        episodes_mid, end_ch_mid, end_off_mid = planner._build_episodes(
             arc_id="arc_001",
             progress=progress_mid,
             chapters=sample_chapters,
@@ -1093,7 +1093,7 @@ class TestEndPositionTracking:
         assert end_off_0 > 0, "Should have consumed text"
         assert end_off_mid > 0, "Should have consumed text"
 
-    async def test_end_position_side_episode_no_advance(
+    def test_end_position_side_episode_no_advance(
         self,
         sample_chapters: list[Chapter],
     ) -> None:
@@ -1111,7 +1111,7 @@ class TestEndPositionTracking:
                 EpisodeSlot(episode_id=i, episode_type="main") for i in range(21, 31)
             ],
         )
-        episodes, end_ch, end_off = await planner._build_episodes(
+        episodes, end_ch, end_off = planner._build_episodes(
             arc_id="arc_001",
             progress=progress,
             chapters=sample_chapters,
@@ -1127,7 +1127,7 @@ class TestEndPositionTracking:
 class TestPlanNextArcIntegration:
     """Integration tests for plan_next_arc."""
 
-    async def test_plan_next_arc_happy_path(
+    def test_plan_next_arc_happy_path(
         self, sample_chapters: list[Chapter]
     ) -> None:
         """plan_next_arc returns (ArcPlan, int, int) tuple for first arc."""
@@ -1135,7 +1135,7 @@ class TestPlanNextArcIntegration:
 
         planner = ArcPlanner()
         progress = _make_reading_progress()
-        result = await planner.plan_next_arc(
+        result = planner.plan_next_arc(
             arc_id="arc_001",
             progress=progress,
             chapters=sample_chapters,
@@ -1158,7 +1158,7 @@ class TestPlanNextArcIntegration:
         for ep in arc_plan.episodes:
             assert ep.target_words == []
 
-    async def test_plan_next_arc_with_prev_arc(
+    def test_plan_next_arc_with_prev_arc(
         self,
         sample_chapters: list[Chapter],
     ) -> None:
@@ -1176,7 +1176,7 @@ class TestPlanNextArcIntegration:
                 EpisodeSlot(episode_id=i, episode_type="main") for i in range(21, 31)
             ],
         )
-        result = await planner.plan_next_arc(
+        result = planner.plan_next_arc(
             arc_id="arc_003",
             progress=progress,
             chapters=sample_chapters,
@@ -1193,7 +1193,7 @@ class TestPlanNextArcIntegration:
             assert episodes[9].episode_type == "side"
             assert episodes[9].source_text is None
 
-    async def test_plan_next_arc_episode_count(
+    def test_plan_next_arc_episode_count(
         self,
         sample_chapters: list[Chapter],
     ) -> None:
@@ -1202,7 +1202,7 @@ class TestPlanNextArcIntegration:
 
         planner = ArcPlanner()
         progress = _make_reading_progress()
-        result = await planner.plan_next_arc(
+        result = planner.plan_next_arc(
             arc_id="arc_001",
             progress=progress,
             chapters=sample_chapters,
@@ -1213,7 +1213,7 @@ class TestPlanNextArcIntegration:
         eps = arc_plan.episodes
         assert 6 <= len(eps) <= 10, f"Expected 6-10 episodes, got {len(eps)}"
 
-    async def test_plan_next_arc_validate_raises(self) -> None:
+    def test_plan_next_arc_validate_raises(self) -> None:
         """plan_next_arc validates inputs before planning — Pydantic rejects invalid offset."""
         from pydantic import ValidationError
 
@@ -1226,14 +1226,14 @@ class TestPlanNextArcIntegration:
                 total_episodes_read=0,
             )
 
-    async def test_plan_next_arc_empty_chapters_raises(self) -> None:
+    def test_plan_next_arc_empty_chapters_raises(self) -> None:
         """plan_next_arc raises on empty chapters."""
         from app.services.arc_planner import ArcPlanner  # noqa: E402
 
         planner = ArcPlanner()
         progress = _make_reading_progress()
         with pytest.raises(ValueError, match="No chapters"):
-            await planner.plan_next_arc(
+            planner.plan_next_arc(
                 arc_id="arc_001",
                 progress=progress,
                 chapters=[],
@@ -1241,7 +1241,7 @@ class TestPlanNextArcIntegration:
                 episode_cache=None,
             )
 
-    async def test_plan_next_arc_immutable_inputs(
+    def test_plan_next_arc_immutable_inputs(
         self,
         sample_chapters: list[Chapter],
     ) -> None:
@@ -1259,7 +1259,7 @@ class TestPlanNextArcIntegration:
         )
         prev_arc_copy = copy.deepcopy(prev_arc)
 
-        await planner.plan_next_arc(
+        planner.plan_next_arc(
             arc_id="arc_001",
             progress=progress,
             chapters=sample_chapters,
@@ -1271,7 +1271,7 @@ class TestPlanNextArcIntegration:
         assert progress_copy == progress, "progress was mutated"
         assert prev_arc_copy == prev_arc, "prev_arc was mutated"
 
-    async def test_plan_next_arc_deterministic(
+    def test_plan_next_arc_deterministic(
         self,
         sample_chapters: list[Chapter],
     ) -> None:
@@ -1280,14 +1280,14 @@ class TestPlanNextArcIntegration:
 
         planner = ArcPlanner()
         progress = _make_reading_progress()
-        r1 = await planner.plan_next_arc(
+        r1 = planner.plan_next_arc(
             arc_id="arc_001",
             progress=progress,
             chapters=sample_chapters,
             prev_arc=None,
             episode_cache=None,
         )
-        r2 = await planner.plan_next_arc(
+        r2 = planner.plan_next_arc(
             arc_id="arc_001",
             progress=progress,
             chapters=sample_chapters,
@@ -1305,7 +1305,7 @@ class TestPlanNextArcIntegration:
 class TestEdgeCases:
     """Additional edge cases for ArcPlanner — text exhaustion, boundaries, config overrides."""
 
-    async def test_partial_arc_text_exhaustion(self) -> None:
+    def test_partial_arc_text_exhaustion(self) -> None:
         """Only 200 words available → produces 0-1 episodes (partial arc)."""
         from app.services.arc_planner import ArcPlanner  # noqa: E402
 
@@ -1316,7 +1316,7 @@ class TestEdgeCases:
             ),
         ]
         progress = _make_reading_progress()
-        result = await planner.plan_next_arc(
+        result = planner.plan_next_arc(
             arc_id="arc_001",
             progress=progress,
             chapters=short_chapters,
@@ -1328,7 +1328,7 @@ class TestEdgeCases:
             f"Expected 0-1 episodes for 200 words, got {len(arc_plan.episodes)}"
         )
 
-    async def test_single_chapter_works(self) -> None:
+    def test_single_chapter_works(self) -> None:
         """Single chapter with enough text still produces multiple episodes."""
         from app.services.arc_planner import ArcPlanner  # noqa: E402
 
@@ -1339,7 +1339,7 @@ class TestEdgeCases:
             ),
         ]
         progress = _make_reading_progress()
-        result = await planner.plan_next_arc(
+        result = planner.plan_next_arc(
             arc_id="arc_001",
             progress=progress,
             chapters=single_chapter,
@@ -1351,7 +1351,7 @@ class TestEdgeCases:
             f"Expected >=3 episodes for 2000 words, got {len(arc_plan.episodes)}"
         )
 
-    async def test_no_more_than_max_episodes(
+    def test_no_more_than_max_episodes(
         self,
         sample_chapters: list[Chapter],
     ) -> None:
@@ -1360,7 +1360,7 @@ class TestEdgeCases:
 
         planner = ArcPlanner()
         progress = _make_reading_progress()
-        result = await planner.plan_next_arc(
+        result = planner.plan_next_arc(
             arc_id="arc_001",
             progress=progress,
             chapters=sample_chapters,
@@ -1371,7 +1371,7 @@ class TestEdgeCases:
         max_eps = planner.config["episodes_per_arc"]
         assert len(arc_plan.episodes) <= max_eps
 
-    async def test_zero_text_produces_no_episodes(self) -> None:
+    def test_zero_text_produces_no_episodes(self) -> None:
         """Chapter with empty raw_text produces 0 episodes."""
         from app.services.arc_planner import ArcPlanner  # noqa: E402
 
@@ -1380,7 +1380,7 @@ class TestEdgeCases:
             _make_chapter(1, "Empty", ""),
         ]
         progress = _make_reading_progress()
-        result = await planner.plan_next_arc(
+        result = planner.plan_next_arc(
             arc_id="arc_001",
             progress=progress,
             chapters=empty_chapter,
@@ -1390,7 +1390,7 @@ class TestEdgeCases:
         arc_plan, _, _ = result
         assert len(arc_plan.episodes) == 0
 
-    async def test_chapter_offset_at_boundaries(self) -> None:
+    def test_chapter_offset_at_boundaries(self) -> None:
         """chapter_offset=0.0 and 1.0 are valid boundary values."""
         from app.services.arc_planner import ArcPlanner  # noqa: E402
 
@@ -1409,7 +1409,7 @@ class TestEdgeCases:
             chapters=single,
         )
 
-    async def test_chapter_offset_negative_raises(self) -> None:
+    def test_chapter_offset_negative_raises(self) -> None:
         """chapter_offset < 0 raises ValueError."""
         from app.services.arc_planner import ArcPlanner  # noqa: E402
 
@@ -1425,7 +1425,7 @@ class TestEdgeCases:
                 chapters=[_make_chapter(1, raw_text="x")],
             )
 
-    async def test_chapter_offset_above_one_raises(self) -> None:
+    def test_chapter_offset_above_one_raises(self) -> None:
         """chapter_offset > 1 raises ValueError."""
         from app.services.arc_planner import ArcPlanner  # noqa: E402
 
@@ -1441,7 +1441,7 @@ class TestEdgeCases:
                 chapters=[_make_chapter(1, raw_text="x")],
             )
 
-    async def test_config_overrides_episodes_per_arc(self) -> None:
+    def test_config_overrides_episodes_per_arc(self) -> None:
         """Config can override episodes_per_arc from default 10."""
         from app.services.arc_planner import ArcPlanner  # noqa: E402
 
@@ -1452,7 +1452,7 @@ class TestEdgeCases:
             _make_chapter(1, "C1", " ".join([f"w{i}" for i in range(3000)])),
         ]
         progress = _make_reading_progress()
-        result = await planner.plan_next_arc(
+        result = planner.plan_next_arc(
             arc_id="arc_001",
             progress=progress,
             chapters=chapters,
@@ -1462,7 +1462,7 @@ class TestEdgeCases:
         arc_plan, _, _ = result
         assert len(arc_plan.episodes) <= 5
 
-    async def test_side_ep_with_config_override(self) -> None:
+    def test_side_ep_with_config_override(self) -> None:
         """Side episode at last position even with custom episode count."""
         from app.services.arc_planner import ArcPlanner  # noqa: E402
 
@@ -1478,7 +1478,7 @@ class TestEdgeCases:
             _make_chapter(1, "C1", " ".join([f"w{i}" for i in range(2000)])),
         ]
         progress = _make_reading_progress()
-        result = await planner.plan_next_arc(
+        result = planner.plan_next_arc(
             arc_id="arc_001",
             progress=progress,
             chapters=chapters,
@@ -1489,7 +1489,7 @@ class TestEdgeCases:
         if len(arc_plan.episodes) == 5:
             assert arc_plan.episodes[4].episode_type == "side"
 
-    async def test_side_ep_with_custom_threshold(self) -> None:
+    def test_side_ep_with_custom_threshold(self) -> None:
         """Custom side_ep_trigger_min_words and side_ep_reject_threshold work."""
         from app.services.arc_planner import ArcPlanner  # noqa: E402
 
@@ -1524,7 +1524,7 @@ class TestEdgeCases:
 class TestOverlapCrossChapter:
     """Verify overlap logic handles within-chapter and cross-chapter cases."""
 
-    async def test_overlap_within_chapter(self) -> None:
+    def test_overlap_within_chapter(self) -> None:
         """end_off=200, overlap=100 → next_start=100, current_chapter stays same."""
         from app.services.arc_planner import ArcPlanner  # noqa: E402
 
@@ -1539,7 +1539,7 @@ class TestOverlapCrossChapter:
             _make_chapter(1, "Ch1", " ".join([f"w{i}" for i in range(600)])),
         ]
         progress = _make_reading_progress()
-        episodes, _, _ = await planner._build_episodes(
+        episodes, _, _ = planner._build_episodes(
             arc_id="arc_001",
             progress=progress,
             chapters=chapters,
@@ -1555,7 +1555,7 @@ class TestOverlapCrossChapter:
         ep2_words = episodes[2].source_text.split()
         assert ep2_words[0] == "w200"
 
-    async def test_overlap_crosses_chapter_backward(self) -> None:
+    def test_overlap_crosses_chapter_backward(self) -> None:
         """end_off=50 in chapter 2, overlap=100 → wraps to previous chapter at (prev_wc - 50)."""
         from app.services.arc_planner import ArcPlanner  # noqa: E402
 
@@ -1571,7 +1571,7 @@ class TestOverlapCrossChapter:
             _make_chapter(2, "Ch2", " ".join([f"b{i}" for i in range(50)])),
         ]
         progress = _make_reading_progress()
-        episodes, end_ch, end_off = await planner._build_episodes(
+        episodes, end_ch, end_off = planner._build_episodes(
             arc_id="arc_001",
             progress=progress,
             chapters=chapters,

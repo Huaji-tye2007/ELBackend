@@ -6,7 +6,14 @@ Ref: AGENTS.md §12 (数据契约).
 from app.models.arc_generation import ArcGenerationState
 from app.models.arc_plan import ArcPlan, EpisodeSlot, PendingWord, TargetWord
 from app.models.chapter import Chapter, ChapterDB
-from app.models.episode import DialogueMessage, Episode, Mark, Meta, NarrationMessage, VocabEntry
+from app.models.episode import (
+    DialogueMessage,
+    Episode,
+    Mark,
+    Meta,
+    NarrationMessage,
+    VocabEntry,
+)
 from app.models.episode_log import EpisodeReadingLog, WordLog
 from app.models.fsrs import FsrsCard
 from app.models.progress import ReadingProgress

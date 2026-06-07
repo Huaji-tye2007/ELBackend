@@ -91,7 +91,7 @@ def get_episode(
     Raises:
         NotFoundError: If the episode file does not exist.
     """
-    ep_path = cache_dir / f"ep_{episode_id}.json"
+    ep_path = cache_dir / f"ep_{episode_id:04d}.json"
 
     if not ep_path.is_file():
         raise NotFoundError(f"Episode {episode_id} not found in cache")

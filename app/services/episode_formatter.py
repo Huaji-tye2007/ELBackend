@@ -91,7 +91,9 @@ class EpisodeFormatter:
 
     # ── Vocab derivation ──────────────────────────────────
 
-    def _derive_vocab(self, messages: list[NarrationMessage | DialogueMessage]) -> list[VocabEntry]:
+    def _derive_vocab(
+        self, messages: list[NarrationMessage | DialogueMessage]
+    ) -> list[VocabEntry]:
         """Build the vocab array from all messages' marks.
 
         Deduplicates by ``(word, definition)``. If any mark for a given
@@ -123,7 +125,9 @@ class EpisodeFormatter:
             elif msg_type == "dialogue":
                 messages.append(DialogueMessage.model_validate(item))
             else:
-                raise ValueError(f"Unknown message type {msg_type!r}, expected 'narration' or 'dialogue'")
+                raise ValueError(
+                    f"Unknown message type {msg_type!r}, expected 'narration' or 'dialogue'"
+                )
         return messages
 
 

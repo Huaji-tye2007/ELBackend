@@ -78,6 +78,27 @@ class ArcGenerationState(BaseModel):
 
     # ── datetime serialization ─────────────────────────────────────
 
+    # ── Computed fields ──────────────────────────────────────────────
+
+    @property
+    def elapsed_seconds(self) -> int:
+        """Seconds elapsed since generation started."""
+        if self.started_at is None:
+            return 0
+        return int((datetime.datetime.now(datetime.timezone.utc) - self.started_at).total_seconds())
+
+    @property
+    def estimated_remaining_seconds(self) -> int:
+        """Estimated remaining seconds based on current progress."""
+        current = self.progress.get("current", 0)
+        total = self.progress.get("total", 0)
+        if current == 0 or total == 0:
+            return 0
+        elapsed = self.elapsed_seconds
+        return int(elapsed * (total - current) / current)
+
+    # ── datetime serialization ─────────────────────────────────────
+
     @field_serializer("started_at")
     def _serialize_started_at(self, v: datetime.datetime | None) -> str | None:
         """Serialize started_at to ISO 8601 string or None."""

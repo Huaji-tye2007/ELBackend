@@ -97,7 +97,7 @@ class MasteryEvaluator:
         # Step 2: FIFO push to history_window
         # clicked=0 → push 1 (word appeared but user didn't click → recall success)
         # clicked>0 → push 0 (user clicked for definition → recall failure)
-        new_value = 1 if word_log.clicked == 0 else 0
+        new_value = 1 if (word_log.appeared > 0 and word_log.clicked == 0) else 0
         new_window = item.history_window[1:] + [new_value]
 
         # Step 3: Weighted score

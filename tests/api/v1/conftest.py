@@ -26,7 +26,9 @@ from app.core.dependencies import (
     get_arc_generation_manager,
     get_ecdict_db,
     get_mastery_evaluator,
+    get_progress,
     get_reading_tracker,
+    get_user_vocab,
 )
 from app.models.arc_generation import ArcGenerationState
 from app.models.episode_log import EpisodeReadingLog
@@ -187,7 +189,7 @@ class _MockArcGenerationManager:
         self._busy = False
         self._generate_calls: list[dict] = []
 
-    async def start_generation(self, arc_id: str | None = None, user_id: str = "default") -> dict:
+    async def start_generation(self, arc_id: str | None = None, user_id: str = "default", **kwargs: object) -> dict:
         if self._busy:
             from app.core.exceptions import GenerationConflictError
             raise GenerationConflictError("Already generating")
@@ -277,6 +279,15 @@ def test_app(
 
     # Override arc dependency
     app.dependency_overrides[get_arc_generation_manager] = lambda: mock_arc_manager
+
+    # Override progress and user_vocab used by arc generate route
+    app.dependency_overrides[get_user_vocab] = lambda: UserVocabulary(user_id="test", vocabulary=[])
+    app.dependency_overrides[get_progress] = lambda: ReadingProgress(
+        current_chapter=1,
+        current_episode=1,
+        chapter_offset=0.0,
+        total_episodes_read=0,
+    )
 
     app.include_router(v1_router, prefix="/api/v1")
     return app

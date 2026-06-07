@@ -30,7 +30,9 @@ def lookup_lemma(surface: str, db: sqlite3.Connection) -> str:
             expected ``dict`` table (e.g. connected to a non-ECDICT file).
     """
     try:
-        row = db.execute("SELECT exchange FROM dict WHERE word = ?", (surface,)).fetchone()
+        row = db.execute(
+            "SELECT exchange FROM dict WHERE word = ?", (surface,)
+        ).fetchone()
     except sqlite3.OperationalError as exc:
         raise ECDictUnavailableError(
             f"ECDICT database unavailable — failed to query dict table: {exc}"

@@ -88,7 +88,7 @@ class VocabularyAnnotator:
             # 2. For each target word, find tokens whose lemma matches
             for tw in target_words:
                 item_id: str = tw["item_id"]
-                target_lemma: str = tw["lemma"]
+                target_lemma: str = tw.get("lemma") or tw.get("word") or tw["item_id"]
 
                 item: VocabularyItem | None = self.user_vocab.vocab_index.get(item_id)
                 if item is None:
@@ -156,7 +156,7 @@ def _tokenize_and_lemmatize(
         List of ``(cleaned_token, lemma, index)`` tuples.  ``cleaned_token``
         preserves original capitalisation and is used as ``marks.word``.
     """
-    tokens = text.split()
+    tokens = text.split(" ")
     result: list[tuple[str, str, int]] = []
 
     for i, tok in enumerate(tokens):

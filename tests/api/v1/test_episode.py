@@ -87,9 +87,9 @@ class TestCacheStatus:
         cache_dir.mkdir()
 
         # Create episode files
-        (cache_dir / "ep_1.json").write_text(_make_episode_json(1))
-        (cache_dir / "ep_5.json").write_text(_make_episode_json(5))
-        (cache_dir / "ep_10.json").write_text(_make_episode_json(10))
+        (cache_dir / "ep_0001.json").write_text(_make_episode_json(1))
+        (cache_dir / "ep_0005.json").write_text(_make_episode_json(5))
+        (cache_dir / "ep_0010.json").write_text(_make_episode_json(10))
         # Add a non-episode file that should be ignored
         (cache_dir / "index.json").write_text("{}")
 
@@ -140,7 +140,7 @@ class TestGetEpisode:
 
         cache_dir = tmp_path / "EpisodeCache"
         cache_dir.mkdir()
-        (cache_dir / "ep_3.json").write_text(_make_episode_json(3))
+        (cache_dir / "ep_0003.json").write_text(_make_episode_json(3))
 
         app.dependency_overrides[get_episode_cache_dir] = lambda: cache_dir
 
@@ -237,7 +237,7 @@ class TestGetEpisode:
                 ],
             }
         )
-        (cache_dir / "ep_1.json").write_text(ep_json)
+        (cache_dir / "ep_0001.json").write_text(ep_json)
 
         app.dependency_overrides[get_episode_cache_dir] = lambda: cache_dir
 

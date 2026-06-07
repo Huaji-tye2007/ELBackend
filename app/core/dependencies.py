@@ -271,6 +271,28 @@ def get_vocabulary_preprocessor():
     return VocabularyPreprocessor(word_sense_db=get_word_sense_db())
 
 
+def get_user_vocab() -> UserVocabulary:
+    """Load the current UserVocabulary from storage.
+
+    Must be used as a FastAPI Depends (not cached with @lru_cache)
+    because the vocabulary may change between requests.
+    """
+    storage = get_user_vocab_storage()
+    return storage.load()
+
+
+def get_progress():
+    """Load the current ReadingProgress from the tracker.
+
+    Returns a default progress state if no progress has been recorded yet.
+    Must be used as a FastAPI Depends (not cached with @lru_cache)
+    because progress advances over time.
+    """
+
+    tracker = get_reading_tracker()
+    return tracker.get_progress()
+
+
 @lru_cache
 def get_episode_formatter():
     """Return a cached EpisodeFormatter singleton with cache_dir injected.
@@ -291,6 +313,8 @@ __all__ = [
     "get_llm_client",
     "get_ecdict_db",
     "get_user_vocab_storage",
+    "get_user_vocab",
+    "get_progress",
     "get_chapter_db_storage",
     "get_word_sense_db",
     "get_arc_planner",

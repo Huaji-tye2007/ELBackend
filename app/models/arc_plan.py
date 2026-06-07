@@ -7,6 +7,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from app.models.fsrs import FsrsCard
+
 
 class PendingWord(BaseModel):
     """A vocabulary item that was pending (not yet successfully placed) from a previous arc."""
@@ -22,6 +24,7 @@ class TargetWord(BaseModel):
     word: str
     meaning: str
     is_new: bool
+    fsrs_card: FsrsCard | None = None
 
 
 class EpisodeSlot(BaseModel):

@@ -1,9 +1,12 @@
 """Tests for app.models.arc_plan — PendingWord, EpisodeSlot, ArcPlan."""
 
+import datetime
+
 import pytest
 from pydantic import ValidationError
 
 from app.models.arc_plan import ArcPlan, EpisodeSlot, PendingWord, TargetWord
+from app.models.fsrs import FsrsCard
 
 
 class TestPendingWord:
@@ -61,6 +64,57 @@ class TestTargetWord:
             is_new=False,
         )
         assert tw.is_new is False
+
+    def test_fsrs_card_default_none(self) -> None:
+        """TargetWord without fsrs_card should default to None."""
+        tw = TargetWord(
+            item_id="known_1",
+            word="known",
+            meaning="已知",
+            is_new=False,
+        )
+        assert tw.fsrs_card is None
+
+    def test_with_fsrs_card(self) -> None:
+        """TargetWord with a valid FsrsCard should store it."""
+        card = FsrsCard(
+            state=2,
+            due=datetime.datetime(2026, 6, 10, tzinfo=datetime.timezone.utc),
+            stability=3.5,
+            difficulty=0.8,
+        )
+        tw = TargetWord(
+            item_id="whisper_1",
+            word="whisper",
+            meaning="耳语",
+            is_new=False,
+            fsrs_card=card,
+        )
+        assert tw.fsrs_card is not None
+        assert tw.fsrs_card.state == 2
+        assert tw.fsrs_card.stability == 3.5
+
+    def test_fsrs_card_roundtrip(self) -> None:
+        """TargetWord with FsrsCard survives model_dump → model_validate roundtrip."""
+        card = FsrsCard(
+            state=1,
+            due=datetime.datetime(2026, 6, 15, tzinfo=datetime.timezone.utc),
+            stability=1.2,
+            difficulty=0.5,
+            step=0,
+        )
+        tw = TargetWord(
+            item_id="consume_1",
+            word="consuming",
+            meaning="消耗",
+            is_new=True,
+            fsrs_card=card,
+        )
+        dumped = tw.model_dump()
+        reloaded = TargetWord.model_validate(dumped)
+        assert reloaded.fsrs_card is not None
+        assert reloaded.fsrs_card.state == 1
+        assert reloaded.fsrs_card.stability == 1.2
 
 
 class TestEpisodeSlot:

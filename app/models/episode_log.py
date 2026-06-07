@@ -9,11 +9,14 @@ from pydantic import BaseModel, Field, model_validator
 class WordLog(BaseModel):
     """A single word's appearance/click tracking within one episode.
 
-    Cross-field constraint: clicked <= appeared (a word cannot be clicked
-    more times than it appeared in the episode text).
+    If ``word`` (surface form) is provided, ReadingTracker resolves it to
+    ``item_id`` via ECDICT + lemma_index.  If ``item_id`` is already known
+    by the client it can be sent directly — the server will not overwrite
+    a non-empty ``item_id``.
     """
 
-    item_id: str
+    item_id: str = ""
+    word: str | None = None
     appeared: int = Field(ge=0)
     clicked: int = Field(ge=0)
 

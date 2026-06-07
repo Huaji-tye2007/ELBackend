@@ -231,11 +231,17 @@ def get_reading_tracker():
     """Return a cached ReadingTracker singleton.
 
     Uses lazy import to avoid circular dependency at module load time.
+    Injects ECDICT for surface-form → item_id resolution per AGENTS.md §6.
     """
     from app.services.reading_tracker import ReadingTracker
 
     settings = get_settings()
-    return ReadingTracker(settings.data_dir)
+    tracker = ReadingTracker(settings.data_dir)
+    try:
+        tracker.set_ecdict_db(get_ecdict_db())
+    except ECDictUnavailableError:
+        pass  # surface-form resolution will be skipped gracefully
+    return tracker
 
 
 @lru_cache

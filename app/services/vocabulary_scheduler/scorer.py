@@ -16,24 +16,21 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
+from app.models.vocabulary import VocabularyItem
 from app.llm.prompts import ContextScoreResponse, make_scoring_prompt
 
 
-def _parse_due(item: dict[str, Any]) -> datetime:
-    """Parse an ISO-8601 due date from a vocabulary item's FSRS card.
+def _parse_due(item: VocabularyItem) -> datetime:
+    """Extract the FSRS card's due date from a vocabulary item.
 
     Args:
-        item: A vocabulary-item dict that contains ``fsrs_card.due`` as an
-            ISO-8601 string (e.g. ``"2026-06-07T00:00:00Z"``).
+        item: A VocabularyItem whose ``fsrs_card.due`` is already a
+            timezone-aware ``datetime`` (parsed by the FsrsCard model).
 
     Returns:
-        A timezone-aware ``datetime`` parsed from the string.
+        The timezone-aware ``datetime`` from ``item.fsrs_card.due``.
     """
-    raw = item["fsrs_card"]["due"]
-    # Python 3.10's fromisoformat does not accept the "Z" suffix.
-    if raw.endswith("Z"):
-        raw = raw[:-1] + "+00:00"
-    return datetime.fromisoformat(raw)
+    return item.fsrs_card.due
 
 
 def _compute_urgency(due_date: datetime, now: datetime) -> float:
@@ -58,7 +55,7 @@ def _compute_urgency(due_date: datetime, now: datetime) -> float:
 
 async def score_context(
     source_text: str | None,
-    candidates: list[dict[str, Any]],
+    candidates: list[VocabularyItem],
     llm_client: Any = None,
 ) -> dict[str, float]:
     """Assign a context-fit score (0.0–1.0) to each vocabulary candidate.
@@ -70,8 +67,7 @@ async def score_context(
     Args:
         source_text: The episode's source text (chapter slice), or ``None``
             for side episodes that lack context.
-        candidates: List of candidate vocabulary items, each containing at
-            least an ``"id"`` key.
+        candidates: List of candidate VocabularyItem objects.
         llm_client: Optional LLM client with an async ``create()`` method that
             accepts ``messages`` and ``response_model``.  When ``None``, all
             candidates receive 0.5.
@@ -84,21 +80,24 @@ async def score_context(
 
     # Fallback when source_text or llm_client is missing.
     if source_text is None or llm_client is None:
-        return {item["id"]: 0.5 for item in candidates}
+        return {item.id: 0.5 for item in candidates}
 
-    # Build id→score lookup for LLM results.
+    # Convert VocabularyItem list to dicts for make_scoring_prompt (which
+    # expects raw dicts with "id"/"word"/"meaning" keys).
+    candidate_dicts = [c.model_dump() for c in candidates]
+
     try:
-        prompt = make_scoring_prompt(source_text, candidates)
+        prompt = make_scoring_prompt(source_text, candidate_dicts)
         response = await llm_client.create(
             messages=prompt,
             response_model=ContextScoreResponse,
         )
     except Exception:
         # Any LLM failure → fall back to neutral scores.
-        return {item["id"]: 0.5 for item in candidates}
+        return {item.id: 0.5 for item in candidates}
 
     # Parse LLM response into a lookup dict, applying safety filters.
-    candidate_ids = {item["id"] for item in candidates}
+    candidate_ids = {item.id for item in candidates}
     llm_scores: dict[str, float] = {}
 
     for entry in response.scores:
@@ -111,12 +110,12 @@ async def score_context(
     # Default to 0.5 for any candidate the LLM omitted.
     result: dict[str, float] = {}
     for item in candidates:
-        result[item["id"]] = llm_scores.get(item["id"], 0.5)
+        result[item.id] = llm_scores.get(item.id, 0.5)
 
     return result
 
 
-def final_score(item: dict[str, Any], context_score: float, now: datetime) -> float:
+def final_score(item: VocabularyItem, context_score: float, now: datetime) -> float:
     """Compute the final composite scheduling score for a vocabulary item.
 
     The formula differs based on whether the item has been reviewed before:
@@ -130,16 +129,16 @@ def final_score(item: dict[str, Any], context_score: float, now: datetime) -> fl
       where ``urgency = min(1.0, max(0, overdue_days) / 30)``.
 
     Args:
-        item: A vocabulary-item dict containing ``fsrs_card``.
+        item: A VocabularyItem containing ``fsrs_card``.
         context_score: The context-fit score from ``score_context`` (0.0–1.0).
         now: The current reference time.
 
     Returns:
         Final composite score between 0.0 and 1.0.
     """
-    if item["fsrs_card"]["last_review"] is None:
+    if item.fsrs_card.last_review is None:
         return 0.4 * 0.3 + context_score * 0.7
 
-    due_date = _parse_due(item)
+    due_date = item.fsrs_card.due
     urgency = _compute_urgency(due_date, now)
     return urgency * 0.5 + context_score * 0.5

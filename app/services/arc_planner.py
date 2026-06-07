@@ -9,6 +9,10 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.models.arc_plan import ArcPlan, EpisodeSlot, PendingWord
+from app.models.chapter import Chapter
+from app.models.progress import ReadingProgress
+
 # ---------------------------------------------------------------------------
 # Configuration constants
 # ---------------------------------------------------------------------------
@@ -130,19 +134,19 @@ class ArcPlanner:
     async def plan_next_arc(
         self,
         arc_id: str,
-        progress: dict,
-        chapters: list[dict],
-        prev_arc: dict | None,
+        progress: ReadingProgress,
+        chapters: list[Chapter],
+        prev_arc: ArcPlan | None,
         episode_cache: Any,  # JSONStorage duck-type (has .load())
-    ) -> tuple:
+    ) -> tuple[ArcPlan, int, int]:
         """Plan the next Arc — extract source text for episodes.
 
         Args:
             arc_id: Unique identifier for this arc (e.g. "arc_003").
-            progress: Reading progress dict with current_chapter, chapter_offset.
-            chapters: List of chapter dicts from ChapterDB.
-            prev_arc: Previous ArcPlan dict or None for first arc.
-            episode_cache: Episode cache dict or None if unavailable.
+            progress: ReadingProgress with current_chapter, chapter_offset.
+            chapters: List of Chapter models from ChapterDB.
+            prev_arc: Previous ArcPlan or None for first arc.
+            episode_cache: Episode cache object (duck-typed) or None.
 
         Returns:
             Tuple of (ArcPlan, end_chapter_id, end_word_offset).
@@ -163,27 +167,27 @@ class ArcPlanner:
         )
 
         # 3. Build pending_words (empty for now — filled by StoryRewriter later)
-        pending_words: list[dict] = []
+        pending_words: list[PendingWord] = []
 
         # 4. Construct ArcPlan
-        arc_plan = {
-            "arc_id": arc_id,
-            "pending_words": pending_words,
-            "episodes": episodes,
-        }
+        arc_plan = ArcPlan(
+            arc_id=arc_id,
+            pending_words=pending_words,
+            episodes=episodes,
+        )
 
         return (arc_plan, end_chapter_id, end_word_offset)
 
     def _validate_inputs(
         self,
-        progress: dict,
-        chapters: list[dict],
+        progress: ReadingProgress,
+        chapters: list[Chapter],
     ) -> None:
         """Validate input parameters before planning.
 
         Args:
-            progress: Reading progress dict.
-            chapters: List of chapter dicts.
+            progress: ReadingProgress model.
+            chapters: List of Chapter models.
 
         Raises:
             ValueError: If chapter_offset is out of [0, 1] range or
@@ -192,13 +196,13 @@ class ArcPlanner:
         if not chapters:
             raise ValueError("No chapters available — ChapterDB is empty")
 
-        offset = progress.get("chapter_offset", 0)
+        offset = progress.chapter_offset
         if not (0 <= offset <= 1):
             raise ValueError(f"chapter_offset must be in [0, 1], got {offset}")
 
     def _extract_source_text(
         self,
-        chapters: list[dict],
+        chapters: list[Chapter],
         start_chapter_id: int,
         start_word_offset: int,
         num_words: int,
@@ -210,7 +214,7 @@ class ArcPlanner:
         total available text is insufficient.
 
         Args:
-            chapters: List of chapter dicts with ``chapter_id`` and ``raw_text``.
+            chapters: List of Chapter models with ``chapter_id`` and ``raw_text``.
             start_chapter_id: Chapter ID to start from (1-indexed).
             start_word_offset: 0-indexed word position within start chapter.
             num_words: Number of words to extract.
@@ -226,11 +230,11 @@ class ArcPlanner:
         end_word_offset = start_word_offset
 
         while len(collected) < num_words:
-            ch = next((c for c in chapters if c["chapter_id"] == chapter_index), None)
+            ch = next((c for c in chapters if c.chapter_id == chapter_index), None)
             if ch is None:
                 break
 
-            ch_words = ch["raw_text"].split()
+            ch_words = ch.raw_text.split()
             remaining_needed = num_words - len(collected)
 
             # Determine start index within this chapter
@@ -255,7 +259,7 @@ class ArcPlanner:
 
         return (" ".join(collected), end_chapter_id, end_word_offset)
 
-    def _should_add_side_episode(self, prev_arc: dict | None) -> bool:
+    def _should_add_side_episode(self, prev_arc: ArcPlan | None) -> bool:
         """Check whether a side episode should be created for this arc.
 
         A side episode is triggered when the previous arc has at least
@@ -271,18 +275,18 @@ class ArcPlanner:
         if prev_arc is None:
             return False
 
-        pending = prev_arc.get("pending_words", [])
+        pending = prev_arc.pending_words
         qualifying = sum(
             1
             for pw in pending
-            if pw.get("rejected_count", 0) >= self.config["side_ep_reject_threshold"]
+            if pw.rejected_count >= self.config["side_ep_reject_threshold"]
         )
         return qualifying >= self.config["side_ep_trigger_min_words"]
 
     async def _read_previous_context(
         self,
         episode_cache: Any,  # JSONStorage duck-type (has async .load())
-        prev_arc: dict | None,
+        prev_arc: ArcPlan | None,
         episode_index: int,
     ) -> list[dict]:
         """Read previous_context from episode cache for the first episode.
@@ -305,10 +309,10 @@ class ArcPlanner:
 
         try:
             # Get the last episode ID from the previous arc to load its cache
-            prev_episodes = prev_arc.get("episodes", [])
+            prev_episodes = prev_arc.episodes
             if not prev_episodes:
                 return []
-            last_ep_id = prev_episodes[-1]["episode_id"]
+            last_ep_id = prev_episodes[-1].episode_id
 
             cached = await episode_cache.load(episode_id=last_ep_id)
 
@@ -326,11 +330,11 @@ class ArcPlanner:
     async def _build_episodes(
         self,
         arc_id: str,
-        progress: dict,
-        chapters: list[dict],
-        prev_arc: dict | None,
+        progress: ReadingProgress,
+        chapters: list[Chapter],
+        prev_arc: ArcPlan | None,
         episode_cache: Any,  # JSONStorage duck-type (has async .load())
-    ) -> tuple[list[dict], int, int]:
+    ) -> tuple[list[EpisodeSlot], int, int]:
         """Build episode slots from chapter text.
 
         Iterates through chapters producing episodes with backward overlap
@@ -338,16 +342,16 @@ class ArcPlanner:
 
         Args:
             arc_id: Arc identifier (passed through to episode metadata).
-            progress: Dict with ``current_chapter`` and ``chapter_offset`` (float 0–1).
-            chapters: List of chapter dicts from ChapterDB.
-            prev_arc: Previous ArcPlan dict or ``None``.
-            episode_cache: Episode cache dict or ``None``.
+            progress: ReadingProgress with current_chapter and chapter_offset (float 0-1).
+            chapters: List of Chapter models from ChapterDB.
+            prev_arc: Previous ArcPlan or ``None``.
+            episode_cache: Episode cache object or ``None``.
 
         Returns:
             Tuple of ``(episodes, end_chapter_id, end_word_offset)``.
-            *episodes* is a list of dicts matching EpisodeSlot keys.
+            *episodes* is a list of EpisodeSlot models.
         """
-        episodes: list[dict] = []
+        episodes: list[EpisodeSlot] = []
         max_episodes = self.config["episodes_per_arc"]
         max_words = self.config["max_episode_words"]
         overlap = self.config["overlap_words"]
@@ -358,28 +362,28 @@ class ArcPlanner:
             side_ep_index = max_episodes + side_ep_index  # -1 → max_episodes - 1
 
         # Determine starting position from progress
-        current_chapter_id: int = progress.get("current_chapter", 1)
-        chapter_offset: float = progress.get("chapter_offset", 0.0)
+        current_chapter_id: int = progress.current_chapter
+        chapter_offset: float = progress.chapter_offset
 
         start_ch = next(
-            (c for c in chapters if c["chapter_id"] == current_chapter_id), None
+            (c for c in chapters if c.chapter_id == current_chapter_id), None
         )
         if start_ch is None:
             return ([], current_chapter_id, 0)
 
-        chapter_word_count = len(start_ch["raw_text"].split())
+        chapter_word_count = len(start_ch.raw_text.split())
         word_pos = int(chapter_word_count * chapter_offset)
 
         # Determine starting episode_id
-        if prev_arc and prev_arc.get("episodes"):
-            start_ep_id = prev_arc["episodes"][-1]["episode_id"] + 1
+        if prev_arc and prev_arc.episodes:
+            start_ep_id = prev_arc.episodes[-1].episode_id + 1
         else:
             start_ep_id = 1
 
         # Last chapter for end-of-text detection
-        last_chapter_id = max(c["chapter_id"] for c in chapters)
-        last_ch = next(c for c in chapters if c["chapter_id"] == last_chapter_id)
-        last_chapter_word_count = len(last_ch["raw_text"].split())
+        last_chapter_id = max(c.chapter_id for c in chapters)
+        last_ch = next(c for c in chapters if c.chapter_id == last_chapter_id)
+        last_chapter_word_count = len(last_ch.raw_text.split())
 
         end_ch: int = current_chapter_id
         end_off: int = word_pos
@@ -389,17 +393,17 @@ class ArcPlanner:
 
             # Check for side episode at the configured position
             if ep_index == side_ep_index and self._should_add_side_episode(prev_arc):
-                episode = {
-                    "episode_id": episode_id,
-                    "episode_type": "side",
-                    "source_text": None,
-                    "previous_context": await self._read_previous_context(
+                episode = EpisodeSlot(
+                    episode_id=episode_id,
+                    episode_type="side",
+                    source_text=None,
+                    previous_context=await self._read_previous_context(
                         episode_cache=episode_cache,
                         prev_arc=prev_arc,
                         episode_index=ep_index,
                     ),
-                    "target_words": [],
-                }
+                    target_words=[],
+                )
                 episodes.append(episode)
                 end_ch = current_chapter_id
                 end_off = word_pos
@@ -419,19 +423,19 @@ class ArcPlanner:
                 # If text exhausted and side episode would have been at a later
                 # position, insert it now before breaking
                 if self._should_add_side_episode(prev_arc):
-                    side_inserted = any(ep["episode_type"] == "side" for ep in episodes)
+                    side_inserted = any(ep.episode_type == "side" for ep in episodes)
                     if not side_inserted:
-                        side_ep = {
-                            "episode_id": episode_id,
-                            "episode_type": "side",
-                            "source_text": None,
-                            "previous_context": await self._read_previous_context(
+                        side_ep = EpisodeSlot(
+                            episode_id=episode_id,
+                            episode_type="side",
+                            source_text=None,
+                            previous_context=await self._read_previous_context(
                                 episode_cache=episode_cache,
                                 prev_arc=prev_arc,
                                 episode_index=ep_index,
                             ),
-                            "target_words": [],
-                        }
+                            target_words=[],
+                        )
                         episodes.append(side_ep)
                 break
 
@@ -440,36 +444,36 @@ class ArcPlanner:
                 end_ch == last_chapter_id and end_off >= last_chapter_word_count
             )
 
-            episode = {
-                "episode_id": episode_id,
-                "episode_type": "main",
-                "source_text": source_text,
-                "previous_context": await self._read_previous_context(
+            episode = EpisodeSlot(
+                episode_id=episode_id,
+                episode_type="main",
+                source_text=source_text,
+                previous_context=await self._read_previous_context(
                     episode_cache=episode_cache,
                     prev_arc=prev_arc,
                     episode_index=ep_index,
                 ),
-                "target_words": [],
-            }
+                target_words=[],
+            )
             episodes.append(episode)
 
             if text_exhausted:
                 # If text exhausted and side episode would have been at a later
                 # position, insert it now before breaking
                 if self._should_add_side_episode(prev_arc):
-                    side_inserted = any(ep["episode_type"] == "side" for ep in episodes)
+                    side_inserted = any(ep.episode_type == "side" for ep in episodes)
                     if not side_inserted:
-                        side_ep = {
-                            "episode_id": episode_id + 1,
-                            "episode_type": "side",
-                            "source_text": None,
-                            "previous_context": await self._read_previous_context(
+                        side_ep = EpisodeSlot(
+                            episode_id=episode_id + 1,
+                            episode_type="side",
+                            source_text=None,
+                            previous_context=await self._read_previous_context(
                                 episode_cache=episode_cache,
                                 prev_arc=prev_arc,
                                 episode_index=ep_index,
                             ),
-                            "target_words": [],
-                        }
+                            target_words=[],
+                        )
                         episodes.append(side_ep)
                 break
 
@@ -483,10 +487,10 @@ class ArcPlanner:
                     # which is prev_wc - 50 (i.e., prev_wc + next_start since next_start = -50)
                     prev_ch_id = end_ch - 1 if end_ch > 1 else 1
                     prev_ch = next(
-                        (c for c in chapters if c["chapter_id"] == prev_ch_id), None
+                        (c for c in chapters if c.chapter_id == prev_ch_id), None
                     )
                     if prev_ch:
-                        prev_wc = len(prev_ch["raw_text"].split())
+                        prev_wc = len(prev_ch.raw_text.split())
                         word_pos = prev_wc + next_start  # negative offset
                         current_chapter_id = prev_ch_id
                     else:

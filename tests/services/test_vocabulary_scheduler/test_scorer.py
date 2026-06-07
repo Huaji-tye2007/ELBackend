@@ -7,6 +7,8 @@ from unittest import mock
 
 import pytest
 
+from app.models.fsrs import FsrsCard
+from app.models.vocabulary import VocabularyItem
 from app.llm.prompts import ContextScoreEntry, ContextScoreResponse
 from app.services.vocabulary_scheduler.scorer import (
     _compute_urgency,
@@ -20,23 +22,61 @@ from app.services.vocabulary_scheduler.scorer import (
 # ---------------------------------------------------------------------------
 
 FIXED_NOW = datetime(2026, 6, 10, 12, 0, 0, tzinfo=timezone.utc)
+DEFAULT_DUE = datetime(2026, 6, 7, 0, 0, 0, tzinfo=timezone.utc)
+
+_FSRS_NEW = FsrsCard(
+    state=1,
+    due=DEFAULT_DUE,
+    last_review=None,
+)
+
+_FSRS_REVIEW = FsrsCard(
+    state=2,
+    due=DEFAULT_DUE,
+    last_review=datetime(2026, 6, 1, 0, 0, 0, tzinfo=timezone.utc),
+    stability=5.0,
+    difficulty=0.5,
+)
 
 
 def _make_item(
     item_id: str = "awkward_1",
-    due: str | None = None,
-    last_review: str | None = None,
-) -> dict:
-    """Build a minimal vocabulary-item dict for testing."""
-    return {
-        "id": item_id,
-        "word": "awkward",
-        "meaning": "尴尬的",
-        "fsrs_card": {
-            "due": due or "2026-06-07T00:00:00Z",
-            "last_review": last_review,
-        },
-    }
+    due: datetime | None = None,
+    last_review: datetime | None = None,
+) -> VocabularyItem:
+    """Build a minimal VocabularyItem for testing."""
+    if due is None:
+        due = DEFAULT_DUE
+    fsrs = FsrsCard(
+        state=2,
+        due=due,
+        last_review=last_review,
+        stability=5.0,
+        difficulty=0.5,
+    )
+    return VocabularyItem(
+        id=item_id,
+        word="awkward",
+        meaning="尴尬的",
+        chapter_first_seen=1,
+        fsrs_card=fsrs,
+    )
+
+
+def _minimal_item(item_id: str) -> VocabularyItem:
+    """Build a bare-minimum VocabularyItem with just an ID (for score_context tests)."""
+    return VocabularyItem(
+        id=item_id,
+        word="test",
+        meaning="测试",
+        chapter_first_seen=1,
+        fsrs_card=FsrsCard(
+            state=2,
+            due=DEFAULT_DUE,
+            stability=5.0,
+            difficulty=0.5,
+        ),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -49,12 +89,12 @@ class TestScoreContext:
 
     async def test_source_text_none(self):
         """When source_text is None, every candidate gets 0.5."""
-        result = await score_context(None, [{"id": "a"}, {"id": "b"}])
+        result = await score_context(None, [_minimal_item("a"), _minimal_item("b")])
         assert result == {"a": 0.5, "b": 0.5}
 
     async def test_with_source_no_llm(self):
         """Without an LLM client, all candidates still get 0.5 (fallback)."""
-        result = await score_context("Some source text", [{"id": "a"}])
+        result = await score_context("Some source text", [_minimal_item("a")])
         assert result == {"a": 0.5}
 
     async def test_empty_candidates(self):
@@ -66,7 +106,9 @@ class TestScoreContext:
         """LLM client is ignored when source_text is None → 0.5 fallback."""
         mock_client = mock.AsyncMock()
         result = await score_context(
-            None, [{"id": "x"}, {"id": "y"}], llm_client=mock_client
+            None,
+            [_minimal_item("x"), _minimal_item("y")],
+            llm_client=mock_client,
         )
         assert result == {"x": 0.5, "y": 0.5}
         mock_client.create.assert_not_called()
@@ -83,8 +125,20 @@ class TestScoreContext:
         result = await score_context(
             "source text about nature",
             [
-                {"id": "a", "word": "tree", "meaning": "树"},
-                {"id": "b", "word": "rocket", "meaning": "火箭"},
+                VocabularyItem(
+                    id="a",
+                    word="tree",
+                    meaning="树",
+                    chapter_first_seen=1,
+                    fsrs_card=_FSRS_REVIEW,
+                ),
+                VocabularyItem(
+                    id="b",
+                    word="rocket",
+                    meaning="火箭",
+                    chapter_first_seen=1,
+                    fsrs_card=_FSRS_REVIEW,
+                ),
             ],
             llm_client=mock_client,
         )
@@ -104,8 +158,20 @@ class TestScoreContext:
         result = await score_context(
             "text",
             [
-                {"id": "a", "word": "w1", "meaning": "m1"},
-                {"id": "b", "word": "w2", "meaning": "m2"},
+                VocabularyItem(
+                    id="a",
+                    word="w1",
+                    meaning="m1",
+                    chapter_first_seen=1,
+                    fsrs_card=_FSRS_REVIEW,
+                ),
+                VocabularyItem(
+                    id="b",
+                    word="w2",
+                    meaning="m2",
+                    chapter_first_seen=1,
+                    fsrs_card=_FSRS_REVIEW,
+                ),
             ],
             llm_client=mock_client,
         )
@@ -122,8 +188,20 @@ class TestScoreContext:
         result = await score_context(
             "text",
             [
-                {"id": "a", "word": "w1", "meaning": "m1"},
-                {"id": "b", "word": "w2", "meaning": "m2"},
+                VocabularyItem(
+                    id="a",
+                    word="w1",
+                    meaning="m1",
+                    chapter_first_seen=1,
+                    fsrs_card=_FSRS_REVIEW,
+                ),
+                VocabularyItem(
+                    id="b",
+                    word="w2",
+                    meaning="m2",
+                    chapter_first_seen=1,
+                    fsrs_card=_FSRS_REVIEW,
+                ),
             ],
             llm_client=mock_client,
         )
@@ -140,7 +218,15 @@ class TestScoreContext:
         )
         result = await score_context(
             "text",
-            [{"id": "a", "word": "w1", "meaning": "m1"}],
+            [
+                VocabularyItem(
+                    id="a",
+                    word="w1",
+                    meaning="m1",
+                    chapter_first_seen=1,
+                    fsrs_card=_FSRS_REVIEW,
+                ),
+            ],
             llm_client=mock_client,
         )
         assert result == {"a": 0.8}
@@ -154,8 +240,20 @@ class TestScoreContext:
         result = await score_context(
             "text",
             [
-                {"id": "a", "word": "w1", "meaning": "m1"},
-                {"id": "b", "word": "w2", "meaning": "m2"},
+                VocabularyItem(
+                    id="a",
+                    word="w1",
+                    meaning="m1",
+                    chapter_first_seen=1,
+                    fsrs_card=_FSRS_REVIEW,
+                ),
+                VocabularyItem(
+                    id="b",
+                    word="w2",
+                    meaning="m2",
+                    chapter_first_seen=1,
+                    fsrs_card=_FSRS_REVIEW,
+                ),
             ],
             llm_client=mock_client,
         )
@@ -168,19 +266,22 @@ class TestScoreContext:
 
 
 class TestParseDue:
-    """Tests for ``_parse_due()`` – ISO-8601 parsing of FSRS card due."""
+    """Tests for ``_parse_due()`` – extracting due date from a VocabularyItem."""
 
     def test_parse_due(self):
-        """Parses an ISO-8601 string to a timezone-aware datetime."""
-        item = _make_item(due="2026-06-07T00:00:00Z")
+        """Extracts the due datetime from a VocabularyItem's FsrsCard."""
+        due_dt = datetime(2026, 6, 7, 0, 0, 0, tzinfo=timezone.utc)
+        item = _make_item(due=due_dt)
         result = _parse_due(item)
-        assert result == datetime(2026, 6, 7, 0, 0, 0, tzinfo=timezone.utc)
+        assert result == due_dt
 
     def test_parse_due_with_offset(self):
-        """Handles ISO strings with +00:00 offset notation."""
-        item = _make_item(due="2026-06-07T00:00:00+00:00")
+        """Works with any timezone-aware datetime (offset not relevant since
+        FsrsCard stores as datetime, not string)."""
+        due_dt = datetime(2026, 6, 7, 0, 0, 0, tzinfo=timezone.utc)
+        item = _make_item(due=due_dt)
         result = _parse_due(item)
-        assert result == datetime(2026, 6, 7, 0, 0, 0, tzinfo=timezone.utc)
+        assert result == due_dt
 
 
 # ---------------------------------------------------------------------------
@@ -244,8 +345,11 @@ class TestFinalScore:
 
     def test_review_overdue(self):
         """Review word 5 days overdue, context=0.8 → ~0.4833."""
-        due_5_days_ago = (FIXED_NOW - timedelta(days=5)).isoformat()
-        item = _make_item(due=due_5_days_ago, last_review="2026-06-01T00:00:00Z")
+        due_5_days_ago = FIXED_NOW - timedelta(days=5)
+        item = _make_item(
+            due=due_5_days_ago,
+            last_review=datetime(2026, 6, 1, 0, 0, 0, tzinfo=timezone.utc),
+        )
         result = final_score(item, context_score=0.8, now=FIXED_NOW)
         # urgency = min(1.0, 5/30) = 0.1666...
         # score = 0.1666*0.5 + 0.8*0.5 = 0.0833 + 0.4 = 0.4833
@@ -253,22 +357,31 @@ class TestFinalScore:
 
     def test_review_30_days_overdue(self):
         """Review word 30 days overdue → urgency=1.0, score=0.9."""
-        due_30_days_ago = (FIXED_NOW - timedelta(days=30)).isoformat()
-        item = _make_item(due=due_30_days_ago, last_review="2026-05-01T00:00:00Z")
+        due_30_days_ago = FIXED_NOW - timedelta(days=30)
+        item = _make_item(
+            due=due_30_days_ago,
+            last_review=datetime(2026, 5, 1, 0, 0, 0, tzinfo=timezone.utc),
+        )
         result = final_score(item, context_score=0.8, now=FIXED_NOW)
         assert result == pytest.approx(0.9, abs=0.01)
 
     def test_review_not_yet_due(self):
         """Review word due in 5 days → urgency=0, score=0.4."""
-        due_5_days_future = (FIXED_NOW + timedelta(days=5)).isoformat()
-        item = _make_item(due=due_5_days_future, last_review="2026-06-01T00:00:00Z")
+        due_5_days_future = FIXED_NOW + timedelta(days=5)
+        item = _make_item(
+            due=due_5_days_future,
+            last_review=datetime(2026, 6, 1, 0, 0, 0, tzinfo=timezone.utc),
+        )
         result = final_score(item, context_score=0.8, now=FIXED_NOW)
         assert result == pytest.approx(0.4, abs=0.01)
 
     def test_review_zero_context(self):
         """Review word 10 days overdue, context=0.0 → ~0.1667."""
-        due_10_days_ago = (FIXED_NOW - timedelta(days=10)).isoformat()
-        item = _make_item(due=due_10_days_ago, last_review="2026-05-31T00:00:00Z")
+        due_10_days_ago = FIXED_NOW - timedelta(days=10)
+        item = _make_item(
+            due=due_10_days_ago,
+            last_review=datetime(2026, 5, 31, 0, 0, 0, tzinfo=timezone.utc),
+        )
         result = final_score(item, context_score=0.0, now=FIXED_NOW)
         # urgency = 10/30 = 0.333...
         # score = 0.333*0.5 + 0*0.5 = 0.1667
@@ -276,6 +389,9 @@ class TestFinalScore:
 
     def test_review_exact_due(self):
         """Review word due exactly now → urgency=0, score=0.4."""
-        item = _make_item(due=FIXED_NOW.isoformat(), last_review="2026-06-01T00:00:00Z")
+        item = _make_item(
+            due=FIXED_NOW,
+            last_review=datetime(2026, 6, 1, 0, 0, 0, tzinfo=timezone.utc),
+        )
         result = final_score(item, context_score=0.8, now=FIXED_NOW)
         assert result == pytest.approx(0.4, abs=0.01)

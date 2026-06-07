@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
+from app.models.vocabulary import UserVocabulary
 from app.services.vocabulary_scheduler.pools import apply_pending_overlay, build_pools
 from app.services.vocabulary_scheduler.scorer import final_score, score_context
 from app.services.vocabulary_scheduler.allocator import (
@@ -38,16 +39,19 @@ async def schedule(
 
     Returns:
         Updated arc_plan dict with each episode's "target_words" list populated.
-        target_words entries are dicts: {item_id, word, meaning, is_new}.
+        target_words entries are TargetWord Pydantic models serialized via model_dump().
     """
     if now is None:
         now = datetime.now(timezone.utc)
 
+    # Convert input dict to UserVocabulary model
+    vocab = UserVocabulary.model_validate(user_vocab)
+
     pending_words: list[dict] = arc_plan.get("pending_words", [])
     episodes: list[dict] = arc_plan.get("episodes", [])
 
-    # Build pools once, then apply pending overlay
-    pools = build_pools(user_vocab, now)
+    # Build pools once, then apply pending overlay (both return list[VocabularyItem])
+    pools = build_pools(vocab, now)
     unseen_pool, review_pool = apply_pending_overlay(pools, pending_words)
 
     # Track pool consumption positions (each episode takes the next batch)
@@ -66,23 +70,23 @@ async def schedule(
         unseen_batch = unseen_pool[unseen_pos : unseen_pos + candidate_count]
         review_batch = review_pool[review_pos : review_pos + candidate_count]
 
-        # Score context for all candidates
+        # Score context for all candidates (batches are already list[VocabularyItem])
         all_candidates = unseen_batch + review_batch
         context_scores: dict[str, float] = await score_context(
             source_text, all_candidates, llm_client
         )
 
         # Compute final scores for unseen candidates
-        unseen_scored: list[tuple[float, dict]] = []
+        unseen_scored: list[tuple[float, Any]] = []
         for item in unseen_batch:
-            cs = context_scores.get(item["id"], 0.5)
+            cs = context_scores.get(item.id, 0.5)
             fs = final_score(item, cs, now)
             unseen_scored.append((fs, item))
 
         # Compute final scores for review candidates
-        review_scored: list[tuple[float, dict]] = []
+        review_scored: list[tuple[float, Any]] = []
         for item in review_batch:
-            cs = context_scores.get(item["id"], 0.5)
+            cs = context_scores.get(item.id, 0.5)
             fs = final_score(item, cs, now)
             review_scored.append((fs, item))
 
@@ -104,12 +108,13 @@ async def schedule(
                 arc_new_ids=arc_new_ids,
             )
 
-        episode["target_words"] = target_words
+        # Serialize TargetWord models back to dicts for storage in arc_plan
+        episode["target_words"] = [tw.model_dump() for tw in target_words]
 
         # Advance pool positions by actually consumed counts (not batch size),
         # so unconsumed candidates remain available for subsequent episodes.
-        unseen_consumed = sum(1 for tw in target_words if tw["is_new"])
-        review_consumed = sum(1 for tw in target_words if not tw["is_new"])
+        unseen_consumed = sum(1 for tw in target_words if tw.is_new)
+        review_consumed = sum(1 for tw in target_words if not tw.is_new)
         unseen_pos += unseen_consumed
         review_pos += review_consumed
 

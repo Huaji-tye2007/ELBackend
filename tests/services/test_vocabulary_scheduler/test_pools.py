@@ -1,18 +1,27 @@
 """Tests for vocabulary_scheduler/pools.py — pool building and pending overlay."""
 
+from __future__ import annotations
+
 import json
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 
+from app.models.fsrs import FsrsCard
+from app.models.vocabulary import UserVocabulary, VocabularyItem
 from app.services.vocabulary_scheduler.pools import apply_pending_overlay, build_pools
 
 FIXTURES_DIR = Path(__file__).parent.parent.parent / "fixtures"
 
 
-def _load_user_vocab() -> dict:
-    """Load the user_vocabulary.json fixture."""
+def _load_user_vocab() -> UserVocabulary:
+    """Load the user_vocabulary.json fixture as a UserVocabulary Pydantic model."""
     path = FIXTURES_DIR / "user_vocabulary.json"
-    return json.loads(path.read_text(encoding="utf-8"))
+    raw = path.read_text(encoding="utf-8")
+    # Python 3.10 compat: datetime.fromisoformat() rejects "Z" suffix
+    raw = re.sub(r"(\d{2}:\d{2}:\d{2})Z", r"\1+00:00", raw)
+    data = json.loads(raw)
+    return UserVocabulary.model_validate(data)
 
 
 def _make_item(
@@ -22,29 +31,33 @@ def _make_item(
     chapter_first_seen: int = 1,
     last_review: str | None = None,
     due: str = "2026-06-01T00:00:00Z",
-) -> dict:
-    """Build a minimal vocabulary item dict for testing."""
-    return {
-        "id": item_id,
-        "word": word,
-        "meaning": meaning,
-        "chapter_first_seen": chapter_first_seen,
-        "history_window": [],
-        "fsrs_card": {
-            "card_id": 1,
-            "state": 1,
-            "step": None,
-            "stability": None,
-            "difficulty": None,
-            "due": due,
-            "last_review": last_review,
-        },
-    }
+) -> VocabularyItem:
+    """Build a minimal VocabularyItem for testing."""
+    # Python 3.10 compat: replace Z with +00:00
+    due_dt = datetime.fromisoformat(due.replace("Z", "+00:00"))
+    last_review_dt = (
+        datetime.fromisoformat(last_review.replace("Z", "+00:00"))
+        if last_review
+        else None
+    )
+    return VocabularyItem(
+        id=item_id,
+        word=word,
+        meaning=meaning,
+        chapter_first_seen=chapter_first_seen,
+        history_window=[],
+        fsrs_card=FsrsCard(
+            card_id=1,
+            state=1,
+            due=due_dt,
+            last_review=last_review_dt,
+        ),
+    )
 
 
-def _make_vocab(items: list[dict]) -> dict:
-    """Wrap items in a user_vocabulary dict."""
-    return {"user_id": "test", "vocabulary": items}
+def _make_vocab(items: list[VocabularyItem]) -> UserVocabulary:
+    """Wrap items in a UserVocabulary model."""
+    return UserVocabulary(user_id="test", vocabulary=items)
 
 
 # ── build_pools tests ────────────────────────────────────────────────
@@ -56,8 +69,8 @@ def test_build_pools_separates_unseen_and_due():
     now = datetime(2026, 6, 6, 12, 0, 0, tzinfo=timezone.utc)
     unseen, due_review = build_pools(data, now)
 
-    unseen_ids = {item["id"] for item in unseen}
-    due_ids = {item["id"] for item in due_review}
+    unseen_ids = {item.id for item in unseen}
+    due_ids = {item.id for item in due_review}
 
     # All unseen words from fixture
     expected_unseen = {
@@ -178,7 +191,7 @@ def test_build_pools_with_timezone_aware():
     now = datetime(2026, 6, 6, 12, 0, 0, tzinfo=timezone.utc)
     unseen, due_review = build_pools(vocab, now)
 
-    due_ids = {item["id"] for item in due_review}
+    due_ids = {item.id for item in due_review}
     # morning: 06:00 <= 12:00 → due
     # noon: 12:00 <= 12:00 → due
     # evening: 23:00 > 12:00 → not due
@@ -202,7 +215,7 @@ def test_apply_pending_overlay_unseen_reorders():
     pending = [{"item_id": "C"}, {"item_id": "A"}]
     unseen, due_review = apply_pending_overlay(pools, pending)
 
-    order = [item["id"] for item in unseen]
+    order = [item.id for item in unseen]
     # Pending in order: C, A
     # Non-pending sorted by chapter_first_seen: B(ch2), D(ch4)
     assert order == ["C", "A", "B", "D"], f"Got order: {order}"
@@ -219,7 +232,7 @@ def test_apply_pending_overlay_due_reorders():
     pending = [{"item_id": "X"}]
     unseen, due_review = apply_pending_overlay(pools, pending)
 
-    order = [item["id"] for item in due_review]
+    order = [item.id for item in due_review]
     # Pending: X first, then non-pending sorted by due: Z (06-01), Y (06-05)
     assert order == ["X", "Z", "Y"], f"Got order: {order}"
 
@@ -235,7 +248,7 @@ def test_apply_pending_overlay_pending_not_in_pool():
     unseen, due_review = apply_pending_overlay(pools, pending)
 
     # Should just be sorted by chapter_first_seen
-    order = [item["id"] for item in unseen]
+    order = [item.id for item in unseen]
     assert order == ["B", "A"], f"Got order: {order}"
 
 
@@ -250,7 +263,7 @@ def test_apply_pending_overlay_no_pending():
     pending: list[dict] = []
     unseen, due_review = apply_pending_overlay(pools, pending)
 
-    order = [item["id"] for item in unseen]
+    order = [item.id for item in unseen]
     # Sorted by chapter_first_seen
     assert order == ["B", "C", "A"], f"Got order: {order}"
 
@@ -266,7 +279,7 @@ def test_apply_pending_sort_unseen_by_chapter():
     pending: list[dict] = []
     unseen, _ = apply_pending_overlay(pools, pending)
 
-    order = [item["id"] for item in unseen]
+    order = [item.id for item in unseen]
     assert order == ["ch1", "ch2", "ch3"], f"Got order: {order}"
 
 
@@ -287,7 +300,7 @@ def test_apply_pending_sort_due_by_date():
     pending: list[dict] = []
     _, due_review = apply_pending_overlay(pools, pending)
 
-    order = [item["id"] for item in due_review]
+    order = [item.id for item in due_review]
     assert order == ["early", "mid", "late"], f"Got order: {order}"
 
 
@@ -314,10 +327,10 @@ def test_apply_pending_mixed_pending_and_natural_order():
     pending = [{"item_id": "DP"}, {"item_id": "UP"}]
     unseen, due_review = apply_pending_overlay(pools, pending)
 
-    unseen_order = [item["id"] for item in unseen]
+    unseen_order = [item.id for item in unseen]
     # UP first (pending), then sorted: U1(ch1), U2(ch2), U3(ch3)
     assert unseen_order == ["UP", "U1", "U2", "U3"], f"Got: {unseen_order}"
 
-    due_order = [item["id"] for item in due_review]
+    due_order = [item.id for item in due_review]
     # DP first (pending), then sorted: D1(06-10), D3(06-20)
     assert due_order == ["DP", "D1", "D3"], f"Got: {due_order}"

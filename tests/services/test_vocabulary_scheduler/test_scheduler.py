@@ -110,7 +110,7 @@ class TestScheduleReturnsArcPlanWithTargetWords:
 class TestScheduleTargetWordsFormat:
     """Each target_words entry must have item_id, word, meaning, is_new."""
 
-    REQUIRED_KEYS = {"item_id", "word", "meaning", "is_new"}
+    REQUIRED_KEYS = {"item_id", "word", "meaning", "is_new", "fsrs_card"}
 
     async def test_keys_present(
         self, arc_plan: dict[str, Any], user_vocab: dict[str, Any], now: datetime

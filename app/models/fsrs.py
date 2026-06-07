@@ -38,8 +38,11 @@ class FsrsCard(BaseModel):
         """Coerce due to timezone-aware UTC datetime.
 
         Accepts ISO-format strings (from Card.to_dict()) and datetime objects.
+        Handles Python 3.10 compatibility: replaces 'Z' suffix with '+00:00'.
         """
         if isinstance(v, str):
+            # Python 3.10 fromisoformat() rejects 'Z' suffix
+            v = v.replace("Z", "+00:00")
             v = datetime.datetime.fromisoformat(v)
         if v.tzinfo is None:
             raise ValueError("due must be timezone-aware")
@@ -51,10 +54,13 @@ class FsrsCard(BaseModel):
         """Coerce last_review to timezone-aware UTC datetime or None.
 
         Accepts ISO-format strings, datetime objects, and None.
+        Handles Python 3.10 compatibility: replaces 'Z' suffix with '+00:00'.
         """
         if v is None:
             return None
         if isinstance(v, str):
+            # Python 3.10 fromisoformat() rejects 'Z' suffix
+            v = v.replace("Z", "+00:00")
             v = datetime.datetime.fromisoformat(v)
         if v.tzinfo is None:
             raise ValueError("last_review must be timezone-aware when provided")

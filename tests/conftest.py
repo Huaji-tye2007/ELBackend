@@ -1,16 +1,23 @@
 """Top-level test fixtures for the ELBackend project.
 
 Provides shared fixtures used across all test modules, including
-JSON fixture loaders, sample data dicts, and mocks.
+JSON fixture loaders, sample data models, and mocks.
 """
 
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from unittest import mock
 
 import pytest
+
+from app.models.arc_plan import ArcPlan
+from app.models.chapter import Chapter, ChapterDB
+from app.models.progress import ReadingProgress
+from app.models.vocabulary import UserVocabulary
+from app.models.word_sense import WordSenseDB
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
@@ -51,56 +58,57 @@ def tmp_data_dir(tmp_path: Path) -> Path:
 
 
 @pytest.fixture
-def sample_chapters() -> list[dict]:
+def sample_chapters() -> list[Chapter]:
     """Load sample chapters from chapter_db.json.
 
-    Returns the "chapters" list as a plain list of dicts.
+    Returns the chapters as a list of Pydantic Chapter models.
     """
     db = load_fixture_json("chapter_db")
-    return db["chapters"]
+    return [Chapter.model_validate(ch) for ch in db["chapters"]]
 
 
 @pytest.fixture
-def sample_progress() -> dict:
-    """Minimal ReadingProgress dict at the start of chapter 1."""
-    return {
-        "current_chapter": 1,
-        "current_episode": 0,
-        "chapter_offset": 0.0,
-        "total_episodes_read": 0,
-    }
+def sample_progress() -> ReadingProgress:
+    """Minimal ReadingProgress at the start of chapter 1."""
+    return ReadingProgress(
+        current_chapter=1,
+        current_episode=1,
+        chapter_offset=0.0,
+        total_episodes_read=0,
+    )
 
 
 @pytest.fixture
-def sample_progress_mid() -> dict:
-    """ReadingProgress dict mid-chapter (offset 0.3)."""
-    return {
-        "current_chapter": 1,
-        "current_episode": 5,
-        "chapter_offset": 0.3,
-        "total_episodes_read": 25,
-    }
+def sample_progress_mid() -> ReadingProgress:
+    """ReadingProgress mid-chapter (offset 0.3)."""
+    return ReadingProgress(
+        current_chapter=1,
+        current_episode=5,
+        chapter_offset=0.3,
+        total_episodes_read=25,
+    )
 
 
 @pytest.fixture
-def sample_progress_end_chapter() -> dict:
-    """ReadingProgress dict near end of chapter (offset 0.95)."""
-    return {
-        "current_chapter": 1,
-        "current_episode": 9,
-        "chapter_offset": 0.95,
-        "total_episodes_read": 29,
-    }
+def sample_progress_end_chapter() -> ReadingProgress:
+    """ReadingProgress near end of chapter (offset 0.95)."""
+    return ReadingProgress(
+        current_chapter=1,
+        current_episode=9,
+        chapter_offset=0.95,
+        total_episodes_read=29,
+    )
 
 
 @pytest.fixture
-def sample_arc_plan() -> dict:
+def sample_arc_plan() -> ArcPlan:
     """Load the previous Arc plan (arc_id=2) from prev_arc_plan.json.
 
-    Note: arc_id is an int (2) in the fixture. Callers that need a
-    string must convert it themselves.
+    The fixture JSON stores arc_id as int 2; we convert to str for Pydantic.
     """
-    return load_fixture_json("prev_arc_plan")
+    data = load_fixture_json("prev_arc_plan")
+    data["arc_id"] = str(data["arc_id"])  # int → str for Pydantic str field
+    return ArcPlan.model_validate(data)
 
 
 class _CacheSpec:
@@ -122,6 +130,27 @@ def mock_episode_cache():
 
 
 @pytest.fixture
-def empty_chapter_db() -> dict:
-    """An empty chapter database dict with no chapters."""
-    return {"chapters": []}
+def empty_chapter_db() -> ChapterDB:
+    """An empty chapter database with no chapters."""
+    return ChapterDB(chapters=[])
+
+
+@pytest.fixture
+def sample_user_vocabulary() -> UserVocabulary:
+    """Load user vocabulary from user_vocabulary.json (24 items, including polysemy).
+
+    Handles Python 3.10 Z-suffix incompatibility by replacing 'Z' with '+00:00'
+    before parsing datetime fields via FsrsCard validators.
+    """
+    raw = (FIXTURES_DIR / "user_vocabulary.json").read_text(encoding="utf-8")
+    # Python 3.10 compat: datetime.fromisoformat() rejects "Z" suffix
+    raw = re.sub(r"(\d{2}:\d{2}:\d{2})Z", r"\1+00:00", raw)
+    data = json.loads(raw)
+    return UserVocabulary.model_validate(data)
+
+
+@pytest.fixture
+def sample_word_sense_db() -> WordSenseDB:
+    """Load word sense database from word_sense_db.json (10 lemmas, 3 polysemous)."""
+    data = load_fixture_json("word_sense_db")
+    return WordSenseDB.model_validate(data)

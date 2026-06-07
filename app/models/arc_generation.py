@@ -34,9 +34,15 @@ class ArcGenerationState(BaseModel):
         default_factory=lambda: {"current": 0, "total": 0},
         description="current/total counters (e.g. episode index, total episodes)",
     )
-    retry_count: int = Field(default=0, ge=0, description="Number of retries attempted for current phase")
-    last_error: str | None = Field(default=None, description="Last error message, if phase is FAILED")
-    started_at: datetime.datetime | None = Field(default=None, description="When generation started (UTC)")
+    retry_count: int = Field(
+        default=0, ge=0, description="Number of retries attempted for current phase"
+    )
+    last_error: str | None = Field(
+        default=None, description="Last error message, if phase is FAILED"
+    )
+    started_at: datetime.datetime | None = Field(
+        default=None, description="When generation started (UTC)"
+    )
     updated_at: datetime.datetime = Field(
         default_factory=lambda: datetime.datetime.now(datetime.timezone.utc),
         description="Last checkpoint write timestamp (UTC)",

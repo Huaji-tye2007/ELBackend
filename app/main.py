@@ -40,10 +40,11 @@ async def lifespan(app: FastAPI):
     """
     # ── Startup ─────────────────────────────────────────────────────────
     try:
-        from app.services.arc_generation_manager import ArcGenerationManager
+        from app.core.dependencies import get_arc_generation_manager
 
-        app.state.arc_manager = ArcGenerationManager()
-        await app.state.arc_manager.resume_on_startup()
+        mgr = get_arc_generation_manager()
+        app.state.arc_manager = mgr
+        await mgr.resume_on_startup()
     except ImportError:
         # ArcGenerationManager not yet implemented — safe to ignore
         pass

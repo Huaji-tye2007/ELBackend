@@ -16,21 +16,21 @@ import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
-from app.api.v1.reading import get_user_vocabulary_storage as reading_get_user_vocabulary_storage
+from app.api.v1.reading import get_user_vocabulary_storage as reading_get_vocab_storage
 from app.api.v1.router import router as v1_router
-from app.api.v1.vocabulary import (
-    get_user_vocabulary_storage,
-    get_vocabulary_preprocessor,
-)
 from app.core.dependencies import (
     get_arc_generation_manager,
+    get_chapter_db_storage,
     get_ecdict_db,
     get_mastery_evaluator,
     get_progress,
     get_reading_tracker,
     get_user_vocab,
+    get_user_vocab_storage,
+    get_vocabulary_preprocessor,
 )
 from app.models.arc_generation import ArcGenerationState
+from app.models.chapter import ChapterDB
 from app.models.episode_log import EpisodeReadingLog
 from app.models.fsrs import FsrsCard
 from app.models.progress import ReadingProgress
@@ -264,11 +264,11 @@ def test_app(
     app = FastAPI()
 
     # Override vocabulary dependencies
-    app.dependency_overrides[get_user_vocabulary_storage] = lambda: mock_storage
+    app.dependency_overrides[get_user_vocab_storage] = lambda: mock_storage
     app.dependency_overrides[get_vocabulary_preprocessor] = lambda: mock_preprocessor
 
-    # Override reading's own vocabulary storage (same mock)
-    app.dependency_overrides[reading_get_user_vocabulary_storage] = lambda: mock_storage
+    # Override reading module's own storage stub
+    app.dependency_overrides[reading_get_vocab_storage] = lambda: mock_storage
 
     # Override reading dependencies
     app.dependency_overrides[get_reading_tracker] = lambda: mock_reading_tracker
@@ -288,6 +288,11 @@ def test_app(
         chapter_offset=0.0,
         total_episodes_read=0,
     )
+    # Override chapter DB used by arc generate route
+    class _MockChapterStorage:
+        def load(self): return ChapterDB(chapters=[])
+        def save(self, _): pass
+    app.dependency_overrides[get_chapter_db_storage] = lambda: _MockChapterStorage()
 
     app.include_router(v1_router, prefix="/api/v1")
     return app

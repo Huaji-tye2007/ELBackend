@@ -17,6 +17,7 @@ class WordLog(BaseModel):
 
     item_id: str = ""
     word: str | None = None
+    meaning: str | None = None
     appeared: int = Field(ge=0)
     clicked: int = Field(ge=0)
 

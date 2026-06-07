@@ -54,7 +54,7 @@ def _clear_all_caches() -> None:
     get_mastery_evaluator.cache_clear()
     get_novel_preprocessor.cache_clear()
     get_story_rewriter.cache_clear()
-    get_vocabulary_annotator.cache_clear()
+    # vocabulary_annotator no longer cached (reloads vocab each call)
     get_reading_tracker.cache_clear()
     get_arc_generation_manager.cache_clear()
 

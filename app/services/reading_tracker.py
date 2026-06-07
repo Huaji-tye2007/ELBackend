@@ -129,6 +129,9 @@ class ReadingTracker:
         if self._ecdict_db is None:
             return
 
+        # Type-narrow for static checker — guarded above
+        db: sqlite3.Connection = self._ecdict_db
+
         from app.models.vocabulary import UserVocabulary
 
         # We need UserVocabulary to resolve (lemma, meaning) → item_id.
@@ -149,7 +152,7 @@ class ReadingTracker:
             if not wl.word:
                 continue  # no surface form to resolve
 
-            item_id = self._resolve_item_id(wl.word, lemma_index)
+            item_id = self._resolve_item_id(wl.word, wl.meaning, lemma_index)
             if item_id:
                 wl.item_id = item_id
                 logger.debug(
@@ -164,23 +167,33 @@ class ReadingTracker:
                     wl.word,
                 )
 
-    @staticmethod
     def _resolve_item_id(
+        self,
         surface: str,
+        meaning: str | None,
         lemma_index: dict[tuple[str, str], str],
     ) -> str | None:
-        """Resolve a surface word form to an item_id via lemma_index.
+        """Resolve a surface word form to an item_id via ECDICT + lemma_index.
 
         Strategy:
-        1. If surface is already a lemma and matches exactly one entry → return it.
-        2. Otherwise, returns ``None`` (caller decides how to handle).
+        1. Resolve surface → lemma via ECDICT lookup_lemma().
+        2. If meaning provided: exact match on (lemma, meaning) → item_id.
+        3. Otherwise: if exactly one entry for this lemma → auto-resolve.
+        4. For polysemous words with no meaning hint, returns None.
         """
-        # If there's exactly one entry for this lemma (single-sense word),
-        # auto-resolve. For polysemous words the client should supply item_id.
+        assert self._ecdict_db is not None  # caller guarantees ECDICT is set
+        lemma = lookup_lemma(surface, self._ecdict_db)
+
+        if meaning:
+            # Exact (lemma, meaning) match for polysemous disambiguation
+            key = (lemma.lower(), meaning)
+            return lemma_index.get(key)
+
+        # Auto-resolve: exactly one lemma entry
         candidates = [
             item_id
-            for (lemma, _meaning), item_id in lemma_index.items()
-            if lemma.lower() == surface.lower()
+            for (l, _m), item_id in lemma_index.items()
+            if l.lower() == lemma.lower()
         ]
         if len(candidates) == 1:
             return candidates[0]

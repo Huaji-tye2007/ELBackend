@@ -253,9 +253,10 @@ class StoryRewriter:
             ValueError: If chapter_text is empty.
             RuntimeError: If the LLM call fails (no fallback — caller handles retries).
         """
-        # Validate inputs
-        if not chapter_text or not chapter_text.strip():
-            raise ValueError("chapter_text must not be empty")
+        # Validate inputs — side episodes may have no source_text
+        if episode_slot.episode_type != "side":
+            if not chapter_text or not chapter_text.strip():
+                raise ValueError("chapter_text must not be empty for non-side episodes")
 
         source_text = episode_slot.source_text or chapter_text
         target_words = episode_slot.target_words or []

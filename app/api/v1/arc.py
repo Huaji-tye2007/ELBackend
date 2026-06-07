@@ -7,7 +7,12 @@ Exception translation: AGENTS.md §15.2.
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.api.v1.schemas import ArcGenerateRequest, ArcGenerateResponse
-from app.core.dependencies import get_arc_generation_manager, get_progress, get_user_vocab
+from app.core.dependencies import (
+    get_arc_generation_manager,
+    get_chapter_db_storage,
+    get_progress,
+    get_user_vocab,
+)
 from app.core.exceptions import GenerationConflictError
 from app.models.arc_generation import ArcGenerationState
 
@@ -20,6 +25,7 @@ async def generate_arc(
     arc_manager=Depends(get_arc_generation_manager),
     user_vocab=Depends(get_user_vocab),
     progress=Depends(get_progress),
+    chapters=Depends(get_chapter_db_storage),
 ) -> ArcGenerateResponse:
     """Manually trigger Arc generation.
 
@@ -34,6 +40,7 @@ async def generate_arc(
             arc_id=request.arc_id,
             user_vocab=user_vocab,
             progress=progress,
+            chapters=chapters.load(),
         )
     except GenerationConflictError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc

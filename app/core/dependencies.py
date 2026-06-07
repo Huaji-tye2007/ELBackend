@@ -195,12 +195,12 @@ def get_story_rewriter():
     return StoryRewriter(llm_client=get_llm_client())
 
 
-@lru_cache
 def get_vocabulary_annotator():
-    """Return a cached VocabularyAnnotator singleton.
+    """Return a fresh VocabularyAnnotator instance.
 
-    Loads the current ``UserVocabulary`` from storage, opens the ECDICT
-    database connection, and injects both.
+    Reloads UserVocabulary from storage on every call so that vocabulary
+    uploads/updates are always reflected in Arc generation.
+
     Uses lazy import to avoid circular dependency at module load time.
     """
     from app.services.vocabulary_annotator import VocabularyAnnotator

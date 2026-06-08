@@ -361,6 +361,55 @@ class TestSurfaceFormPreserved:
             ("bank_money", 12),
         ]
 
+    def test_rewriter_exact_position_used_for_polysemy(
+        self, ecdict_db: sqlite3.Connection
+    ) -> None:
+        """Rewriter-provided message/word indexes pin marks exactly."""
+        uv = UserVocabulary(
+            user_id="test",
+            vocabulary=[
+                _make_vocab_item("bank_river", "bank", "河岸", last_review=None),
+                _make_vocab_item("bank_money", "bank", "银行", last_review=None),
+            ],
+        )
+        ann = VocabularyAnnotator(user_vocab=uv, ecdict_db=ecdict_db)
+        msg = NarrationMessage(
+            type="narration",
+            text="I sat by the river bank and later visited the bank.",
+        )
+        target_words = [
+            {
+                "item_id": "bank_money",
+                "word": "bank",
+                "meaning": "银行",
+                "surface": "bank",
+                "message_index": 0,
+                "word_index": 10,
+                "is_new": True,
+            },
+            {
+                "item_id": "bank_river",
+                "word": "bank",
+                "meaning": "河岸",
+                "surface": "bank",
+                "message_index": 0,
+                "word_index": 5,
+                "is_new": True,
+            },
+        ]
+
+        result = ann.annotate(
+            messages=[msg],
+            target_words=target_words,
+            shown_set=set(),
+        )
+
+        marks = result[0].marks
+        assert [(m.item_id, m.index, m.definition) for m in marks] == [
+            ("bank_river", 5, "河岸"),
+            ("bank_money", 10, "银行"),
+        ]
+
 
 class TestDialogueMessage:
     """Annotation works on DialogueMessage as well as NarrationMessage."""

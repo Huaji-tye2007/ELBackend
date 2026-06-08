@@ -54,10 +54,6 @@ async def schedule(
     pools = build_pools(vocab, now)
     unseen_pool, review_pool = apply_pending_overlay(pools, pending_words)
 
-    # Track pool consumption positions (each episode takes the next batch)
-    unseen_pos: int = 0
-    review_pos: int = 0
-
     # Track arc-wide is_new dedup
     arc_new_ids: set[str] = set()
     arc_repeat_pool: list[Any] = []
@@ -68,8 +64,8 @@ async def schedule(
 
         # Take next batch from each pool (up to episode_limit * 3 candidates)
         candidate_count = episode_limit * 3
-        unseen_batch = unseen_pool[unseen_pos : unseen_pos + candidate_count]
-        review_batch = review_pool[review_pos : review_pos + candidate_count]
+        unseen_batch = unseen_pool[:candidate_count]
+        review_batch = review_pool[:candidate_count]
         repeat_batch = arc_repeat_pool[:candidate_count]
 
         # Score context for all candidates (batches are already list[VocabularyItem])
@@ -116,18 +112,20 @@ async def schedule(
         # Serialize TargetWord models back to dicts for storage in arc_plan
         episode["target_words"] = [tw.model_dump() for tw in target_words]
 
-        # Advance pool positions by actually consumed counts (not batch size),
-        # so unconsumed candidates remain available for subsequent episodes.
         review_batch_ids = {item.id for item in review_batch}
         unseen_by_id = {item.id: item for item in unseen_batch}
-        unseen_consumed = sum(1 for tw in target_words if tw.is_new)
-        review_consumed = sum(
-            1
+        consumed_unseen_ids = {tw.item_id for tw in target_words if tw.is_new}
+        consumed_review_ids = {
+            tw.item_id
             for tw in target_words
             if not tw.is_new and tw.item_id in review_batch_ids
-        )
-        unseen_pos += unseen_consumed
-        review_pos += review_consumed
+        }
+        unseen_pool = [
+            item for item in unseen_pool if item.id not in consumed_unseen_ids
+        ]
+        review_pool = [
+            item for item in review_pool if item.id not in consumed_review_ids
+        ]
 
         repeat_ids = {item.id for item in arc_repeat_pool}
         for tw in target_words:

@@ -12,6 +12,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+from app.core.exceptions import LLMError
 from app.models.arc_plan import EpisodeSlot, TargetWord
 
 logger = logging.getLogger(__name__)
@@ -46,6 +47,14 @@ class UsedTargetWord(BaseModel):
         min_length=1,
         description="The exact surface form used in the generated text, e.g. consumed",
     )
+    message_index: int = Field(
+        ge=0,
+        description="0-based index into messages where this surface appears",
+    )
+    word_index: int = Field(
+        ge=0,
+        description='0-based index into messages[message_index].text.split(" ")',
+    )
 
 
 class _RewriteResponse(BaseModel):
@@ -61,7 +70,7 @@ class _RewriteResponse(BaseModel):
     )
     target_words_used: list[UsedTargetWord] = Field(
         default_factory=list,
-        description="Target words successfully incorporated, with item_id and surface form",
+        description="Target words successfully incorporated, with item_id, surface form, and exact token position",
     )
 
 
@@ -95,7 +104,7 @@ WRITING GUIDELINES:
    - "side": "right" for the protagonist (main character, the "I" narrator)
    - "side": "left" for all other characters
    - "name": the speaker's name
-3. **Target words** — You will be given target vocabulary words (with Chinese meanings). Your job is to incorporate as many of them as NATURALLY as possible into the narrative. Do NOT force them — only use a word if it truly fits the scene. For each word you successfully use, report both its item_id and the exact surface form you wrote in target_words_used. Order target_words_used by each target word's first occurrence in the generated messages.
+3. **Target words** — You will be given target vocabulary words (with Chinese meanings). Your job is to incorporate as many of them as NATURALLY as possible into the narrative. Do NOT force them — only use a word if it truly fits the scene. For each word you successfully use, report its item_id, exact surface form, message_index, and word_index in target_words_used. message_index is the 0-based index into messages. word_index is the 0-based index into that message's text split by spaces.
 4. **Surface forms welcome** — Feel free to use the words in their natural inflected forms (e.g., "consuming", "went", "ran") — you do NOT need to use the base lemma form.
 5. **Style** — Keep the English accessible (think young adult / light novel level). Vivid but not overly complex. Show emotions through actions and dialogue, not abstract descriptions.
 6. **Length** — Produce a complete scene with multiple message exchanges. Aim for 6–12 messages covering both narration and dialogue.
@@ -159,8 +168,8 @@ def _build_user_prompt(
         lines.append("## Target Vocabulary Words")
         lines.append(
             "Integrate as many of the following words naturally into the story. "
-            "For each word you use, report its item_id and exact surface form in target_words_used. "
-            "When multiple target words share the same visible surface form, order them by their first occurrence in the generated messages."
+            "For each word you use, report its item_id, exact surface form, message_index, and word_index in target_words_used. "
+            "message_index is the 0-based index in messages; word_index is the 0-based index in that message's text split by spaces."
         )
         for tw in target_words:
             label = "NEW" if tw.is_new else "REVIEW"
@@ -173,7 +182,7 @@ def _build_user_prompt(
     lines.append(
         "Output a JSON object with:\n"
         '  - "messages": a list of narration/dialogue messages\n'
-        '  - "target_words_used": list of objects like {"item_id": "...", "surface": "..."}, ordered by first occurrence in messages'
+        '  - "target_words_used": list of objects like {"item_id": "...", "surface": "...", "message_index": 0, "word_index": 3}'
     )
 
     return "\n".join(lines)
@@ -292,7 +301,7 @@ class StoryRewriter:
             logger.error(
                 "LLM rewrite failed for episode %s: %s", episode_slot.episode_id, exc
             )
-            raise RuntimeError(
+            raise LLMError(
                 f"StoryRewriter LLM call failed for episode {episode_slot.episode_id}"
             ) from exc
 

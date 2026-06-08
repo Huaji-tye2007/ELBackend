@@ -926,3 +926,80 @@ class TestScheduleWithLLMClient:
         assert mock_client.chat_structured.call_count >= 1, (
             "LLM client was never called"
         )
+
+    async def test_unselected_candidates_are_not_skipped(self, now: datetime) -> None:
+        """A lower-scored candidate remains available for later episodes."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        from app.llm.prompts import ContextScoreEntry, ContextScoreResponse
+
+        due = now.isoformat()
+        user_vocab = {
+            "user_id": "test",
+            "vocabulary": [
+                {
+                    "id": item_id,
+                    "word": item_id,
+                    "meaning": item_id,
+                    "chapter_first_seen": None,
+                    "history_window": [1, 1, 1, 1, 1],
+                    "fsrs_card": {
+                        "card_id": index,
+                        "state": 1,
+                        "stability": None,
+                        "difficulty": None,
+                        "due": due,
+                        "last_review": None,
+                    },
+                }
+                for index, item_id in enumerate(["w1", "w2", "w3", "w4"], start=1)
+            ],
+        }
+        arc_plan = {
+            "arc_id": "arc",
+            "pending_words": [],
+            "episodes": [
+                {
+                    "episode_id": 1,
+                    "episode_type": "main",
+                    "source_text": "episode one",
+                    "previous_context": [],
+                    "target_words": [],
+                },
+                {
+                    "episode_id": 2,
+                    "episode_type": "main",
+                    "source_text": "episode two",
+                    "previous_context": [],
+                    "target_words": [],
+                },
+            ],
+        }
+
+        mock_client = MagicMock()
+
+        async def _score(messages, response_model):
+            content = messages[1]["content"]
+            if "episode one" in content:
+                scores = {"w1": 0.1, "w2": 1.0, "w3": 0.0, "w4": 0.0}
+            else:
+                scores = {"w1": 1.0, "w2": 0.0, "w3": 0.0, "w4": 0.0}
+            return ContextScoreResponse(
+                scores=[
+                    ContextScoreEntry(item_id=item_id, score=score)
+                    for item_id, score in scores.items()
+                ]
+            )
+
+        mock_client.chat_structured = AsyncMock(side_effect=_score)
+
+        result = await schedule(
+            arc_plan=arc_plan,
+            user_vocab=user_vocab,
+            now=now,
+            episode_limit=1,
+            llm_client=mock_client,
+        )
+
+        assert result["episodes"][0]["target_words"][0]["item_id"] == "w2"
+        assert result["episodes"][1]["target_words"][0]["item_id"] == "w1"

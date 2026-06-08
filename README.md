@@ -134,7 +134,7 @@ curl.exe http://127.0.0.1:8000/api/v1/health
 - `marks[].is_new = true`：建议内联展示释义，例如 `consumed（消耗）`
 - `marks[].is_new = false`：建议只加粗，点击时再查词
 
-注意：后端更新学习状态时优先使用 `item_id`；`marks[].word` 始终是文本中的表层形式。前端可以继续使用既有 lemma 逻辑。同形多义词（例如 `bank=河岸` / `bank=银行`）由后端按 `item_id` 区分并分配到不同 token index，前端只需按返回的 `marks` 渲染。
+注意：后端更新学习状态时优先使用 `item_id`；`marks[].word` 始终是文本中的表层形式。前端可以继续使用既有 lemma 逻辑。同形多义词（例如 `bank=河岸` / `bank=银行`）由后端按内部 `message_index/word_index` 精确定位后输出为不同 `marks[].index`，前端只需按返回的 `marks` 渲染。
 
 ## 5. API 详情
 
@@ -156,7 +156,7 @@ curl.exe http://127.0.0.1:8000/api/v1/health
 | GET    | `/api/v1/novel/chapters`              | 无                                                       | `Chapter[]` 摘要列表                       | -                                                          |
 | GET    | `/api/v1/novel/chapters/{chapter_id}` | 无                                                       | `Chapter`                                  | `404` 未上传小说或章节不存在                               |
 | POST   | `/api/v1/arc/generate`                | `{ "arc_id"?: string }`                                  | `{ "job_id": string, "status": "queued" }` | `400` 无章节；`404` 未上传小说；`409` 已有任务运行         |
-| GET    | `/api/v1/arc/status`                  | 无                                                       | `ArcGenerationState`                       | -                                                          |
+| GET    | `/api/v1/arc/status`                  | 无                                                       | `ArcGenerationPublicState`                 | 不返回内部 `intermediate_data`                             |
 | GET    | `/api/v1/episode/cache/status`        | 无                                                       | `{cached_count, latest_episode_id}`        | -                                                          |
 | GET    | `/api/v1/episode/{episode_id}`        | 无                                                       | `Episode`                                  | `404` Episode 尚未生成                                     |
 | GET    | `/api/v1/dictionary/{word}`           | 无                                                       | `{word, meaning, examples?}`               | `404` 查不到词；`503` ECDICT 不可用                        |
@@ -270,7 +270,6 @@ GET /api/v1/arc/status
   "phase": "GENERATING",
   "progress": { "current": 4, "total": 10 },
   "retry_count": 0,
-  "intermediate_data": null,
   "last_error": null,
   "started_at": "2026-06-07T10:00:00+00:00",
   "updated_at": "2026-06-07T10:03:07+00:00",
@@ -286,7 +285,7 @@ IDLE -> PLANNING -> SCHEDULING -> GENERATING -> ANNOTATING -> FORMATTING -> COMP
 ```
 
 前端建议每 5-10 秒轮询一次。`phase = "COMPLETE"` 后再读取 episode。
-`/arc/status` 是轻量状态接口，冷启动时即使尚未上传词表或尚未提供 ECDICT，也应返回 `IDLE`，不会触发生成依赖加载。
+`/arc/status` 是轻量状态接口，冷启动时即使尚未上传词表或尚未提供 ECDICT，也应返回 `IDLE`，不会触发生成依赖加载。内部 checkpoint 的 `intermediate_data` 不属于前端契约，不会在该接口返回。
 
 ### 5.7 查询 Episode Cache
 

@@ -11,6 +11,7 @@ from unittest import mock
 import pytest
 
 from app.models.arc_plan import EpisodeSlot, TargetWord
+from app.core.exceptions import LLMError
 from app.models.episode import DialogueMessage, NarrationMessage
 from app.models.fsrs import FsrsCard
 from app.services.story_rewriter.rewriter import (
@@ -96,7 +97,9 @@ def _make_llm_response(
     return _RewriteResponse(
         messages=messages,
         target_words_used=[
-            item if isinstance(item, UsedTargetWord) else UsedTargetWord(**item)
+            item
+            if isinstance(item, UsedTargetWord)
+            else UsedTargetWord(**({"message_index": 0, "word_index": 0} | item))
             for item in (target_words_used or [])
         ],
     )
@@ -183,7 +186,7 @@ class TestBuildUserPrompt:
         assert "b" in prompt
 
     def test_target_words_used_order_instruction(self):
-        """Prompt tells the LLM to report used targets in text order."""
+        """Prompt tells the LLM to report exact used target positions."""
         tws = [
             _make_target_word(item_id="bank_river", word="bank", meaning="河岸"),
             _make_target_word(item_id="bank_money", word="bank", meaning="银行"),
@@ -191,8 +194,9 @@ class TestBuildUserPrompt:
 
         prompt = _build_user_prompt("text", tws)
 
-        assert "first occurrence" in prompt
-        assert "same visible surface form" in prompt
+        assert "message_index" in prompt
+        assert "word_index" in prompt
+        assert "split by spaces" in prompt
 
 
 # ---------------------------------------------------------------------------
@@ -301,12 +305,24 @@ class TestRewriteEpisodeSuccess:
         result = await rewriter.rewrite_episode(slot, "Some text.")
         assert [used.item_id for used in result.target_words_used] == ["tw1"]
         assert result.target_words_used[0].surface == "serendipity"
+        assert result.target_words_used[0].message_index == 0
+        assert result.target_words_used[0].word_index == 0
 
     async def test_unknown_target_words_used_filtered(self, rewriter, mock_client):
         """item_ids not in the slot's target_words are filtered out."""
         mock_client.chat_structured.return_value.target_words_used = [
-            UsedTargetWord(item_id="tw1", surface="serendipity"),
-            UsedTargetWord(item_id="ghost_id", surface="ghost"),
+            UsedTargetWord(
+                item_id="tw1",
+                surface="serendipity",
+                message_index=0,
+                word_index=0,
+            ),
+            UsedTargetWord(
+                item_id="ghost_id",
+                surface="ghost",
+                message_index=0,
+                word_index=0,
+            ),
         ]
 
         slot = _make_episode_slot(
@@ -389,22 +405,22 @@ class TestRewriteEpisodeErrors:
         with pytest.raises(ValueError, match="chapter_text must not be empty"):
             await rewriter.rewrite_episode(slot, "   \n\t  ")
 
-    async def test_llm_failure_raises_runtime_error(self):
-        """LLM call failure raises RuntimeError (caller handles retries)."""
+    async def test_llm_failure_raises_llm_error(self):
+        """LLM call failure raises LLMError (caller handles retries)."""
         mock_client = mock.AsyncMock()
         mock_client.chat_structured.side_effect = RuntimeError("LLM API down")
         rewriter = StoryRewriter(llm_client=mock_client)
 
-        with pytest.raises(RuntimeError, match="StoryRewriter LLM call failed"):
+        with pytest.raises(LLMError, match="StoryRewriter LLM call failed"):
             await rewriter.rewrite_episode(_make_episode_slot(), "valid text")
 
-    async def test_llm_timeout_raises_runtime_error(self):
-        """LLM timeout raises RuntimeError."""
+    async def test_llm_timeout_raises_llm_error(self):
+        """LLM timeout raises LLMError."""
         mock_client = mock.AsyncMock()
         mock_client.chat_structured.side_effect = TimeoutError("Request timed out")
         rewriter = StoryRewriter(llm_client=mock_client)
 
-        with pytest.raises(RuntimeError, match="StoryRewriter LLM call failed"):
+        with pytest.raises(LLMError, match="StoryRewriter LLM call failed"):
             await rewriter.rewrite_episode(_make_episode_slot(), "valid text")
 
 
@@ -532,8 +548,18 @@ class TestRewriteResult:
                 DialogueMessage(type="dialogue", side="left", name="Anna", text="Hi!"),
             ],
             target_words_used=[
-                UsedTargetWord(item_id="tw1", surface="one"),
-                UsedTargetWord(item_id="tw2", surface="two"),
+                UsedTargetWord(
+                    item_id="tw1",
+                    surface="one",
+                    message_index=0,
+                    word_index=0,
+                ),
+                UsedTargetWord(
+                    item_id="tw2",
+                    surface="two",
+                    message_index=1,
+                    word_index=0,
+                ),
             ],
         )
         assert len(result.messages) == 2
@@ -548,7 +574,14 @@ class TestRewriteResult:
                     type="dialogue", side="right", name="Hero", text="Let's go."
                 ),
             ],
-            target_words_used=[UsedTargetWord(item_id="abc_123", surface="beginning")],
+            target_words_used=[
+                UsedTargetWord(
+                    item_id="abc_123",
+                    surface="beginning",
+                    message_index=0,
+                    word_index=1,
+                )
+            ],
         )
         json_str = result.model_dump_json()
         assert "The beginning" in json_str

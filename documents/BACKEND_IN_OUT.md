@@ -529,6 +529,7 @@ ArcPlan.json（上一个 Arc，用于读取 pending_words）
 - side episode：新词上限 10，复习词上限 10。pending 词优先填满，剩余槽位再按 final_score 补充。
 - 冷启动降级：review 词不够时全用新词填满，候选不足时不报错。
 - Arc 内复现：同一 item_id 在整个 Arc 内只能 `is_new=true` 一次；被引入过的新词会进入本 Arc 复现池，后续 episode 可继续以 `is_new=false` 进入 `target_words`，避免小词表只在第一集出现。
+- 池消费规则：每集只从 unseen/review 池移除实际选中的 item_id；同一批候选里未被选中的词必须保留给后续 episode，不能按“选中数量”推进数组指针导致靠前未选词被跳过。
 
 **职责边界**
 - 不调用 ECDICT
@@ -556,7 +557,7 @@ Story Rewriter 不再只考虑当前集。
 
 + target_words
 + episode_type
-+ **输出文本中的词汇均为表层形式**（屈折形态，如 `"consuming"` / `"went"` / `"ran"`）。Rewriter 不做 lemma 归一化，但必须在结构化输出中报告成功嵌入词的 `{item_id, surface}`；`target_words_used` 必须按目标词在生成文本中的首次出现顺序返回，尤其是多个义项共享同一 surface（如 `bank`）时。Annotator 优先用 surface 定位，只有缺 surface 时才用 ECDICT 兜底。
++ **输出文本中的词汇均为表层形式**（屈折形态，如 `"consuming"` / `"went"` / `"ran"`）。Rewriter 不做 lemma 归一化，但必须在结构化输出中报告成功嵌入词的 `{item_id, surface, message_index, word_index}`。Annotator 优先用 `message_index/word_index` 精确定位，只有缺精确位置时才退回 surface/ECDICT 兜底。
 
 ---
 
@@ -601,19 +602,26 @@ Rewriter 的输出是纯叙事文本，**不包含 lemma 标注**（marks 留空
 ```json
 {
   "target_words_used": [
-    {"item_id": "consume_1", "surface": "consumed"}
+    {
+      "item_id": "consume_1",
+      "surface": "consumed",
+      "message_index": 0,
+      "word_index": 5
+    }
   ]
 }
 ```
 
 第二步：Vocabulary Annotator 接收 Rewriter 输出的 messages 后
-优先使用 `target_words_used[].surface` 在文本中定位表层词，再用 `item_id → VocabularyItem` 取得释义与 FSRS 状态。仅当 rewriter 没有返回 surface 时，才通过 ECDICT 对文本 token 做 lemma 兜底定位。
+优先使用 `target_words_used[].message_index/word_index` 在文本中精确定位表层词，再用 `item_id → VocabularyItem` 取得释义与 FSRS 状态。`surface` 用于校验该位置 token 是否与 Rewriter 声明一致，并作为 `marks.word` 的表层形式来源。仅当 rewriter 没有返回精确位置时，才退回 surface 直接匹配或通过 ECDICT 对文本 token 做 lemma 兜底定位。
 
-若多个 `target_words_used` 共享同一 surface，Annotator 不会把每个义项都贴到所有同名 token 上；它按 Rewriter 返回顺序为每个 item_id 消费一个尚未被同 surface 目标占用的 token index。因此 `target_words_used` 的顺序是同形多义词定位的内部约定，学习对象身份仍由 `item_id` 决定。
+若多个 `target_words_used` 共享同一 surface（如 `bank` 的多个义项），Annotator 仍以各自的 `message_index/word_index` 定位，不再依赖返回顺序猜测位置。学习对象身份始终由 `item_id` 决定。
 
 ```python
 item_id = "consume_1"          # Rewriter 返回
 surface_form = "consumed"      # Rewriter 返回的表层形式，填入 marks.word
+message_index = 0              # Rewriter 返回，指向 messages[0]
+word_index = 5                 # Rewriter 返回，指向 messages[0].text.split(" ")[5]
 item = vocab_index["consume_1"]
 
 # Scheduler 显式传入 is_new=false 时优先作为复现词处理；否则再用
@@ -626,7 +634,7 @@ is_new = target_word["is_new"] and item["fsrs_card"]["last_review"] is None and 
 mark = {
     "item_id": item_id,
     "word": surface_form,   # "consumed"，表层形式
-    "index": 5,
+    "index": word_index,
     "definition": item["meaning"],
     "is_new": is_new
 }
@@ -637,14 +645,14 @@ mark = {
 ### 一词多义处理
 同一 lemma 可能对应多个 item_id（如 `bank` → `bank_river` 河岸 / `bank_finance` 银行）。
 主链路中不再由 Annotator/ReadingTracker 根据 `(lemma, meaning)` 二次猜 item_id；Scheduler 选出的目标词、Rewriter 返回的 `target_words_used`、Episode `marks`、Reading Log 都必须携带同一个 `item_id`。
-当两个 item_id 使用相同 surface 时，Rewriter 返回顺序必须对应文本出现顺序；Annotator 用该顺序分配不同 token 位置，避免同一 `marks.index` 同时出现两个释义。
+当两个 item_id 使用相同 surface 时，Rewriter 必须返回各自准确的 `message_index/word_index`；Annotator 用位置字段分配不同 token，避免同一 `marks.index` 同时出现两个释义。
 
 ```python
 vocab_index = {item["id"]: item for item in user_vocab["vocabulary"]}
 item = vocab_index[item_id]
 ```
 
-`lemma_index` 仍可作为词表预处理、查词或 Annotator 缺少 surface 时的辅助索引，但不得作为学习状态主键。
+`lemma_index` 仍可作为词表预处理、查词或 Annotator 缺少精确位置时的辅助索引，但不得作为学习状态主键。
 
 ```python
 vocab_index   # item_id → VocabularyItem，主链路使用

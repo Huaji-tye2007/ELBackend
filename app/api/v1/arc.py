@@ -15,7 +15,7 @@ from app.core.dependencies import (
 )
 from app.core.exceptions import GenerationConflictError
 from app.models.chapter import ChapterDB
-from app.models.arc_generation import ArcGenerationState
+from app.models.arc_generation import ArcGenerationPublicState
 
 router = APIRouter(prefix="/arc", tags=["arc"])
 
@@ -62,17 +62,18 @@ async def generate_arc(
     )
 
 
-@router.get("/status", response_model=ArcGenerationState)
+@router.get("/status", response_model=ArcGenerationPublicState)
 async def get_arc_status(
     arc_manager=Depends(get_arc_generation_manager),
-) -> ArcGenerationState:
+) -> ArcGenerationPublicState:
     """Return the current Arc generation state.
 
     Includes phase, progress counters, retry count, timestamps,
     and any error messages.  Frontend should poll this endpoint
     every 5–10 seconds during generation.
     """
-    return await arc_manager.get_status()
+    state = await arc_manager.get_status()
+    return ArcGenerationPublicState.model_validate(state.model_dump())
 
 
 __all__ = ["router"]

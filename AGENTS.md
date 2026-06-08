@@ -74,8 +74,8 @@
 - **学习状态全部按 `item_id` 管理**（is_new、history_window、FSRS card），不按表层形式，也不按 lemma。
 - **item_id-first 全链路**：
   1. **VocabularyScheduler** 从 `UserVocabulary` 选出 `TargetWord(item_id, word, meaning, is_new)`。
-  2. **StoryRewriter** 按 `item_id` 使用目标词，并返回成功使用的 `target_words_used: list[{item_id, surface}]`，其中 `surface` 是生成文本里的精确表层形式；当多个目标词共享同一 surface（如 bank 的多个义项）时，必须按文本首次出现顺序返回。
-  3. **VocabularyAnnotator** 用 `item_id → VocabularyItem` 识别学习对象，用 `target_words_used[].surface` 定位文本后填 `marks.item_id`、`marks.word`、`marks.is_new`；同一 surface 对应多个 item_id 且没有精确位置字段时，按 `target_words_used` 顺序消费不同 token，避免同一 index 被多个义项重复标注；仅当 rewriter 未返回 surface 时才用 ECDICT 做兜底定位。
+  2. **StoryRewriter** 按 `item_id` 使用目标词，并返回成功使用的 `target_words_used: list[{item_id, surface, message_index, word_index}]`，其中 `surface` 是生成文本里的精确表层形式，`message_index` 是 `messages` 的 0-based 下标，`word_index` 是 `messages[message_index].text.split(" ")` 的 0-based token 下标。
+  3. **VocabularyAnnotator** 用 `item_id → VocabularyItem` 识别学习对象，优先用 `target_words_used[].message_index/word_index` 精确定位文本后填 `marks.item_id`、`marks.word`、`marks.is_new`；`surface` 用作位置 token 校验与 `marks.word` 来源。仅当 rewriter 未返回精确位置时，才退回 surface/ECDICT 兜底定位。
   4. **Frontend** 渲染时使用 `marks.word/index/definition/is_new`，可继续既有 lemma 逻辑；上报阅读日志时回传对应 `item_id`。
   5. **ReadingTracker / MasteryEvaluator** 直接按 `item_id` 记录行为并更新 FSRS card。
 - `vocab` 数组可由 `messages[].marks` 推导，写出来仅为方便前端；若由后端生成，应同步携带 `item_id`。
@@ -84,9 +84,9 @@
 - 唯一数据源：`asset/ecdict_mobile.db`。
 - ECDICT 不再是学习状态主链路，只用于：
   - 词表上传预处理时辅助判断 headword/forms。
-  - Annotator 在 rewriter 未返回明确 surface 时做表层词定位兜底。
+  - Annotator 在 rewriter 未返回明确 `message_index/word_index` 时做表层词定位兜底。
 - ReadingTracker / MasteryEvaluator 不再用 ECDICT 反推学习对象；reading log 的 `item_id` 是必填字段。
-- 兜底定位流程：Annotator 在缺少 rewriter surface 时，遇到表层形式（如 `"went"`）→ 查 ECDICT 词条 → 若 `exchange` 字段含 `0:<lemma>`（如 `0:go`）则取该 lemma → 用目标词 lemma 判断文本位置。
+- 兜底定位流程：Annotator 在缺少 rewriter 精确位置时，先尝试 `surface` 直接匹配；若没有 `surface`，遇到表层形式（如 `"went"`）→ 查 ECDICT 词条 → 若 `exchange` 字段含 `0:<lemma>`（如 `0:go`）则取该 lemma → 用目标词 lemma 判断文本位置。
 - 若 `exchange` 为空或词条不存在，表层形式本身即原形。
 - **禁止**调用任何外部 lemmatizer 库。
 - 在内存建两个索引（加载时一次性构建）：
@@ -246,7 +246,7 @@ ELBackend/
 | POST   | `/reading/finish`              | `{episode_id}`                                            | `{vocab_updated_count: int}`          | 完成一集，触发 Mastery Evaluator          |
 | GET    | `/dictionary/{word}`           | –                                                         | `{word, meaning, examples?: []}`      | 查词（用于 marks 点击展开）               |
 | POST   | `/arc/generate`                | `{arc_id?: str}`                                          | `{job_id, status: "queued"}` 或 `409` | 手动触发 Arc 生成（详见 §14）             |
-| GET    | `/arc/status`                  | –                                                         | `ArcGenerationState`（见 §14）        | 前端轮询生成进度                          |
+| GET    | `/arc/status`                  | –                                                         | `ArcGenerationPublicState`（见 §14）  | 前端轮询生成进度，不暴露 checkpoint 中间数据 |
 | GET    | `/health`                      | –                                                         | `{status: "ok"}`                      | 健康检查                                  |
 
 **`GET /api/v1/arc/status` 响应示例**：
@@ -275,7 +275,7 @@ ELBackend/
 | 2   | `NovelPreprocessor`      | `app/services/novel_preprocessor/`        | `preprocess(title: str, raw_text: str) -> list[Chapter]`                                                                                                         |
 | 3   | `ArcPlanner`             | `app/services/arc_planner.py`             | `plan_next_arc(progress, chapters, prev_arc) -> ArcPlan`                                                                                                         |
 | 4   | `VocabularyScheduler`    | `app/services/vocabulary_scheduler/`      | `schedule(arc_plan: dict, user_vocab: dict, now: datetime \| None = None, llm_client: Any = None) -> dict`                                                       |
-| 5   | `StoryRewriter`          | `app/services/story_rewriter/`            | `rewrite_episode(...) -> RewriteResult`，其中 `target_words_used: list[{item_id, surface}]`（Message.text 含表层形式，不做 lemma 标注；marks 由 Annotator 后补） |
+| 5   | `StoryRewriter`          | `app/services/story_rewriter/`            | `rewrite_episode(...) -> RewriteResult`，其中 `target_words_used: list[{item_id, surface, message_index, word_index}]`（Message.text 含表层形式，不做 lemma 标注；marks 由 Annotator 后补） |
 | 6   | `VocabularyAnnotator`    | `app/services/vocabulary_annotator/`      | `annotate(messages, target_words, shown_set) -> list[Message]`                                                                                                   |
 | 7   | `EpisodeFormatter`       | `app/services/episode_formatter.py`       | `format_episode(meta, messages, vocab) -> Episode`                                                                                                               |
 | 8   | `ReadingTracker`         | `app/services/reading_tracker.py`         | `track(episode_log) -> ReadingProgress`                                                                                                                          |
@@ -314,6 +314,7 @@ ELBackend/
 10. side episode：新词上限 10，复习词上限 10，pending 词优先填入
 11. 冷启动：review 词不足时用新词补充，候选不足时不报错
 12. Arc 内复现：同一 item_id 在同一 Arc 内只能有一次 `is_new=true`；被引入过的新词会进入本 Arc 复现池，后续 episode 可继续以 `is_new=false` 进入 `target_words`，避免小词表只在第一集出现。
+13. 池消费：每集候选池按 final_score 选择后，只从 unseen/review 池移除实际选中的 item_id；本批未选中的候选必须保留给后续 episode，禁止用“消费数量”推进指针导致跳过。
 
 **职责边界**：
 - 不调用 ECDICT
@@ -446,14 +447,14 @@ IDLE
 任意步骤异常 → FAILED → 重试（指数退避，最多 3 次：10s → 30s → 90s）→ 仍失败则停留 FAILED 等待手动 generate
 ```
 
-每步成功后立即写 checkpoint 到 `data/arc_generation_state.json`（走 `atomic_write_json`）。
+每步成功后立即写 checkpoint 到 `data/arc_generation_state.json`（走 `atomic_write_json`）。checkpoint 内部可包含 `intermediate_data`（如 `arc_plan`、`scheduled`、`rewrite_results`、`annotated_episodes`），但该字段只用于后端断点续跑，`GET /api/v1/arc/status` 不得返回给前端。
 
 ### 14.4 API 端点
 
 | Method | Path                   | Request          | Response                     | 说明                                                              |
 | ------ | ---------------------- | ---------------- | ---------------------------- | ----------------------------------------------------------------- |
 | POST   | `/api/v1/arc/generate` | `{arc_id?: str}` | `{job_id, status: "queued"}` | 手动触发；若已有任务运行中 → `GenerationConflictError` → HTTP 409 |
-| GET    | `/api/v1/arc/status`   | –                | `ArcGenerationState`         | 前端轮询；POST 后通常每 5–10 秒拉一次                             |
+| GET    | `/api/v1/arc/status`   | –                | `ArcGenerationPublicState`   | 前端轮询；POST 后通常每 5–10 秒拉一次；不返回 `intermediate_data` |
 
 ### 14.5 并发约束
 - 同一时刻只允许一个 Arc 在生成中（V1.5 单用户假设）
@@ -469,6 +470,8 @@ IDLE
 | 重试策略                             | `max_retries=3`，指数退避：10s → 30s → 90s                                                               |
 | 3 次全部失败                         | phase 停留 `FAILED`，`last_error` 写入异常 message，等待人工或下一次自动触发                             |
 | 服务进程崩溃                         | 下次启动 `resume_on_startup()` 恢复 checkpoint 状态，lifespan 补齐数据后调用 `resume_pipeline(...)` 续跑 |
+
+断点续跑要求：若 checkpoint 已有 `arc_plan`，不得重复调用 ArcPlanner；已有 `scheduled`，不得重复调用 Scheduler；已有 `rewrite_results`，只生成缺失 episode；已有 `annotated_episodes`，只补缺失注释或直接进入 formatting；`FORMATTING` 阶段按 progress 跳过已写 episode cache。
 
 ### 14.7 监控
 - 监控接口即 `GET /api/v1/arc/status`
@@ -625,7 +628,7 @@ IDLE
 
 - 状态机的**每个 transition 都要测试**（IDLE→PLANNING, PLANNING→SCHEDULING, ..., 各种 →FAILED 路径）
 - mock 全部 9 个 service 类，单独验证编排逻辑
-- 重启恢复：构造 phase 在 `GENERATING(4/10)` 的 checkpoint 文件，验证 `resume_on_startup()` 恢复状态，且 `resume_pipeline(...)` 能继续/重跑到 COMPLETE
+- 重启恢复：构造 phase 在 `GENERATING(4/10)` 的 checkpoint 文件，验证 `resume_on_startup()` 恢复状态，且 `resume_pipeline(...)` 复用已有 `arc_plan/scheduled/rewrite_results`，只补缺失阶段到 COMPLETE
 - 重试退避：用 `time_machine` 验证 10s/30s/90s 间隔
 
 ### 16.10 不要这样做

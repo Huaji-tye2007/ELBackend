@@ -116,4 +116,31 @@ class ArcGenerationState(BaseModel):
         return v.isoformat()
 
 
-__all__ = ["ArcGenerationState"]
+class ArcGenerationPublicState(BaseModel):
+    """Public status payload for GET /api/v1/arc/status.
+
+    Keeps checkpoint-only ``intermediate_data`` out of the polling API.
+    """
+
+    arc_id: str
+    phase: Phase
+    progress: dict[str, int] = Field(
+        default_factory=lambda: {"current": 0, "total": 0},
+    )
+    retry_count: int = Field(default=0, ge=0)
+    last_error: str | None = None
+    started_at: datetime.datetime | None = None
+    updated_at: datetime.datetime
+    elapsed_seconds: int
+    estimated_remaining_seconds: int
+
+    @field_serializer("started_at")
+    def _serialize_started_at(self, v: datetime.datetime | None) -> str | None:
+        return v.isoformat() if v is not None else None
+
+    @field_serializer("updated_at")
+    def _serialize_updated_at(self, v: datetime.datetime) -> str:
+        return v.isoformat()
+
+
+__all__ = ["ArcGenerationPublicState", "ArcGenerationState"]

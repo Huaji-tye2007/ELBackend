@@ -151,7 +151,14 @@ def _make_rewrite_result() -> mock.MagicMock:
             type="dialogue", side="right", name="Hero", text="Let us go.", marks=[]
         ),
     ]
-    result.target_words_used = [{"item_id": "item_1", "surface": "journey"}]
+    result.target_words_used = [
+        {
+            "item_id": "item_1",
+            "surface": "journey",
+            "message_index": 0,
+            "word_index": 3,
+        }
+    ]
     result.model_dump.return_value = {
         "messages": [
             {"type": "narration", "text": "I began the journey.", "marks": []},
@@ -163,7 +170,7 @@ def _make_rewrite_result() -> mock.MagicMock:
                 "marks": [],
             },
         ],
-        "target_words_used": [{"item_id": "item_1", "surface": "journey"}],
+        "target_words_used": result.target_words_used,
     }
     return result
 
@@ -409,8 +416,18 @@ class TestFullPipeline:
             )
         ]
         rewrite_result.target_words_used = [
-            {"item_id": "bank_river", "surface": "bank"},
-            {"item_id": "bank_money", "surface": "bank"},
+            {
+                "item_id": "bank_river",
+                "surface": "bank",
+                "message_index": 0,
+                "word_index": 5,
+            },
+            {
+                "item_id": "bank_money",
+                "surface": "bank",
+                "message_index": 0,
+                "word_index": 9,
+            },
         ]
         rewrite_result.model_dump.return_value = {
             "messages": [
@@ -432,6 +449,10 @@ class TestFullPipeline:
         assert [tw["item_id"] for tw in target_words] == [
             "bank_river",
             "bank_money",
+        ]
+        assert [(tw["message_index"], tw["word_index"]) for tw in target_words] == [
+            (0, 5),
+            (0, 9),
         ]
 
     async def test_lazy_annotator_factory_used_during_annotating(
@@ -674,6 +695,55 @@ class TestResume:
             user_vocab=pipeline_data["user_vocab"],
         )
 
+        status = await manager.get_status()
+        assert status.phase == "COMPLETE"
+
+    async def test_resume_uses_checkpoint_without_rerunning_completed_phases(
+        self, manager, pipeline_data, tmp_path: Path
+    ):
+        """Resume reuses saved planning/scheduling/generation checkpoint data."""
+        checkpoint_path = tmp_path / "data" / "arc_generation_state.json"
+        os.makedirs(checkpoint_path.parent, exist_ok=True)
+        monkeypatch_checkpoint(manager, checkpoint_path)
+
+        arc_plan = _make_arc_plan()
+        scheduled = arc_plan.model_dump()
+        for ep in scheduled["episodes"]:
+            ep["target_words"] = [
+                {
+                    "item_id": "item_1",
+                    "word": "journey",
+                    "meaning": "旅程",
+                    "is_new": True,
+                    "fsrs_card": _make_fsrs_card().model_dump(),
+                }
+            ]
+
+        completed_rewrite = _make_rewrite_result().model_dump.return_value
+        manager._state = ArcGenerationState(
+            arc_id="arc_resume",
+            phase="GENERATING",
+            progress={"current": 1, "total": 2},
+            started_at=datetime.datetime.now(datetime.timezone.utc),
+            intermediate_data={
+                "arc_plan": arc_plan.model_dump(),
+                "scheduled": scheduled,
+                "rewrite_results": [completed_rewrite],
+            },
+        )
+
+        await manager._resume_pipeline(
+            user_id=pipeline_data["user_id"],
+            progress=pipeline_data["progress"],
+            chapters=pipeline_data["chapters"],
+            user_vocab=pipeline_data["user_vocab"],
+        )
+
+        manager._arc_planner.plan_next_arc.assert_not_called()
+        manager._vocab_scheduler.assert_not_called()
+        assert manager._story_rewriter.rewrite_episode.call_count == 1
+        assert manager._vocab_annotator.annotate.call_count == 2
+        assert manager._episode_formatter.write_cache.call_count == 2
         status = await manager.get_status()
         assert status.phase == "COMPLETE"
 

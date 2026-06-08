@@ -22,7 +22,9 @@ from app.core.exceptions import GenerationConflictError
 from app.models.arc_generation import ArcGenerationState
 from app.models.arc_plan import ArcPlan, EpisodeSlot, TargetWord
 from app.models.chapter import Chapter
+from app.models.episode import DialogueMessage, NarrationMessage
 from app.models.progress import ReadingProgress
+from app.services.story_rewriter.rewriter import RewriteResult
 from app.models.vocabulary import UserVocabulary
 from app.utils.atomic_io import atomic_write_json
 
@@ -280,56 +282,72 @@ class ArcGenerationManager:
             return
 
         try:
-            # ── Phase 1: PLANNING ──────────────────────────────
-            ok, arc_plan = await self._retry_call(
-                phase="PLANNING",
-                fn=self._arc_planner.plan_next_arc,
-                arc_id=arc_id,
-                progress=progress,
-                chapters=chapters,
-                prev_arc=prev_arc,
-                episode_cache=episode_cache,
-            )
-            if not ok:
-                return
-            arc_plan, _end_ch, _end_off = arc_plan  # unpack tuple return
+            initial_phase = self._state.phase
+            intermediate = self._state.intermediate_data or {}
 
-            # Save intermediate data for resume
-            self._state.intermediate_data = {"arc_plan": arc_plan.model_dump()}
-            self._state.phase = "PLANNING"
-            await self._checkpoint()
+            # ── Phase 1: PLANNING ──────────────────────────────
+            if intermediate.get("arc_plan"):
+                arc_plan = ArcPlan.model_validate(intermediate["arc_plan"])
+            else:
+                ok, arc_plan_result = await self._retry_call(
+                    phase="PLANNING",
+                    fn=self._arc_planner.plan_next_arc,
+                    arc_id=arc_id,
+                    progress=progress,
+                    chapters=chapters,
+                    prev_arc=prev_arc,
+                    episode_cache=episode_cache,
+                )
+                if not ok:
+                    return
+                arc_plan, _end_ch, _end_off = arc_plan_result  # unpack tuple return
+
+                # Save intermediate data for resume
+                intermediate["arc_plan"] = arc_plan.model_dump()
+                self._state.intermediate_data = intermediate
+                self._state.phase = "PLANNING"
+                await self._checkpoint()
 
             # ── Phase 2: SCHEDULING ────────────────────────────
-            self._state.phase = "SCHEDULING"
-            self._state.progress = {"current": 0, "total": 0}
-            await self._checkpoint()
+            if self._has_scheduled_episodes(intermediate):
+                scheduled = intermediate["scheduled"]
+            else:
+                self._state.phase = "SCHEDULING"
+                self._state.progress = {"current": 0, "total": 0}
+                await self._checkpoint()
 
-            ok, scheduled = await self._retry_call(
-                phase="SCHEDULING",
-                fn=self._vocab_scheduler,
-                arc_plan=arc_plan.model_dump(),
-                user_vocab=user_vocab.model_dump(),
-                now=datetime.datetime.now(datetime.timezone.utc),
-                llm_client=self._llm_client,
-            )
-            if not ok:
-                return
+                ok, scheduled = await self._retry_call(
+                    phase="SCHEDULING",
+                    fn=self._vocab_scheduler,
+                    arc_plan=arc_plan.model_dump(),
+                    user_vocab=user_vocab.model_dump(),
+                    now=datetime.datetime.now(datetime.timezone.utc),
+                    llm_client=self._llm_client,
+                )
+                if not ok:
+                    return
 
-            self._state.intermediate_data = {
-                "arc_plan": arc_plan.model_dump(),
-                "scheduled": scheduled,
-            }
-            await self._checkpoint()
+                intermediate["arc_plan"] = arc_plan.model_dump()
+                intermediate["scheduled"] = scheduled
+                self._state.intermediate_data = intermediate
+                await self._checkpoint()
 
             # ── Phase 3: GENERATING (per-episode loop) ─────────
             episodes: list[dict] = scheduled.get("episodes", [])
             total_episodes = len(episodes)
-            self._state.phase = "GENERATING"
-            self._state.progress = {"current": 0, "total": total_episodes}
-            await self._checkpoint()
+            rewrite_results: list[RewriteResult] = [
+                RewriteResult.model_validate(result)
+                for result in intermediate.get("rewrite_results", [])
+            ]
+            if len(rewrite_results) < total_episodes:
+                self._state.phase = "GENERATING"
+                self._state.progress = {
+                    "current": len(rewrite_results),
+                    "total": total_episodes,
+                }
+                await self._checkpoint()
 
-            rewrite_results: list[Any] = []
-            for i, ep_dict in enumerate(episodes):
+            for i, ep_dict in enumerate(episodes[len(rewrite_results) :], start=len(rewrite_results)):
                 # Reconstruct EpisodeSlot from scheduled dict
                 target_words = [
                     TargetWord.model_validate(tw)
@@ -356,49 +374,35 @@ class ArcGenerationManager:
                 rewrite_results.append(result)
 
                 # Store serialized results for resume
-                self._state.intermediate_data = {
-                    "arc_plan": arc_plan.model_dump(),
-                    "scheduled": scheduled,
-                    "rewrite_results": [r.model_dump() for r in rewrite_results],
-                }
+                intermediate["arc_plan"] = arc_plan.model_dump()
+                intermediate["scheduled"] = scheduled
+                intermediate["rewrite_results"] = [
+                    r.model_dump() for r in rewrite_results
+                ]
+                self._state.intermediate_data = intermediate
                 self._state.progress["current"] = i + 1
                 await self._checkpoint()
 
             # ── Phase 4: ANNOTATING (per-episode loop) ─────────
-            self._state.phase = "ANNOTATING"
-            self._state.progress = {"current": 0, "total": total_episodes}
-            await self._checkpoint()
-
-            annotated_episodes: list[list[Any]] = []
-            for i, (result, ep_dict) in enumerate(zip(rewrite_results, episodes)):
-                vocab_annotator = self._get_vocab_annotator()
-                scheduled_by_id: dict[str, dict] = {
-                    tw["item_id"]: tw
-                    for tw in ep_dict.get("target_words", [])
-                    if tw.get("item_id")
+            annotated_episodes = self._load_annotated_episodes(
+                intermediate.get("annotated_episodes", [])
+            )
+            if len(annotated_episodes) < total_episodes:
+                self._state.phase = "ANNOTATING"
+                self._state.progress = {
+                    "current": len(annotated_episodes),
+                    "total": total_episodes,
                 }
-                target_words_used: list[dict] = []
-                seen_used_ids: set[str] = set()
-                for used in (
-                    result.target_words_used
-                    if hasattr(result, "target_words_used")
-                    else []
-                ):
-                    if hasattr(used, "model_dump"):
-                        used_data = used.model_dump()
-                    elif isinstance(used, dict):
-                        used_data = used
-                    else:
-                        # Backward-compatible test/mock shape: a bare item_id.
-                        used_data = {"item_id": str(used)}
-                    item_id = used_data.get("item_id")
-                    if not item_id or item_id in seen_used_ids:
-                        continue
-                    scheduled = scheduled_by_id.get(item_id)
-                    if scheduled is None:
-                        continue
-                    target_words_used.append({**scheduled, **used_data})
-                    seen_used_ids.add(item_id)
+                await self._checkpoint()
+
+            annotation_pairs = list(zip(rewrite_results, episodes))[
+                len(annotated_episodes) :
+            ]
+            for i, (result, ep_dict) in enumerate(
+                annotation_pairs, start=len(annotated_episodes)
+            ):
+                vocab_annotator = self._get_vocab_annotator()
+                target_words_used = self._merge_target_words_used(result, ep_dict)
 
                 shown_set: set[str] = set()
 
@@ -414,20 +418,35 @@ class ArcGenerationManager:
 
                 annotated_episodes.append(annotated_msgs)
 
-                self._state.intermediate_data = {
-                    "arc_plan": arc_plan.model_dump(),
-                    "scheduled": scheduled,
-                    "annotated_episodes": annotated_episodes,
-                }
+                intermediate["arc_plan"] = arc_plan.model_dump()
+                intermediate["scheduled"] = scheduled
+                intermediate["rewrite_results"] = [
+                    r.model_dump() for r in rewrite_results
+                ]
+                intermediate["annotated_episodes"] = [
+                    self._dump_messages(messages) for messages in annotated_episodes
+                ]
+                self._state.intermediate_data = intermediate
                 self._state.progress["current"] = i + 1
                 await self._checkpoint()
 
             # ── Phase 5: FORMATTING (per-episode loop) ─────────
             self._state.phase = "FORMATTING"
-            self._state.progress = {"current": 0, "total": total_episodes}
+            formatting_start = (
+                min(self._state.progress.get("current", 0), total_episodes)
+                if initial_phase == "FORMATTING"
+                else 0
+            )
+            self._state.progress = {
+                "current": formatting_start,
+                "total": total_episodes,
+            }
             await self._checkpoint()
 
-            for i, (msgs, ep_dict) in enumerate(zip(annotated_episodes, episodes)):
+            formatting_pairs = list(zip(annotated_episodes, episodes))[formatting_start:]
+            for i, (msgs, ep_dict) in enumerate(
+                formatting_pairs, start=formatting_start
+            ):
                 meta: dict = {
                     "ep": ep_dict.get("episode_id", i + 1),
                     "title": f"Episode {ep_dict.get('episode_id', i + 1)}",
@@ -600,6 +619,74 @@ class ArcGenerationManager:
         if self._vocab_annotator_factory is not None:
             return self._vocab_annotator_factory()
         return self._vocab_annotator
+
+    def _has_scheduled_episodes(self, intermediate: dict) -> bool:
+        """Return True when checkpoint contains a usable scheduled ArcPlan."""
+        scheduled = intermediate.get("scheduled")
+        if not isinstance(scheduled, dict):
+            return False
+        episodes = scheduled.get("episodes")
+        if episodes:
+            return True
+        if self._state is None:
+            return False
+        return self._state.progress.get("total", 0) == 0
+
+    @staticmethod
+    def _merge_target_words_used(result: Any, ep_dict: dict) -> list[dict]:
+        """Merge scheduled TargetWord data with Rewriter used-position data."""
+        scheduled_by_id: dict[str, dict] = {
+            tw["item_id"]: tw
+            for tw in ep_dict.get("target_words", [])
+            if tw.get("item_id")
+        }
+        target_words_used: list[dict] = []
+        seen_used_ids: set[str] = set()
+
+        for used in (
+            result.target_words_used if hasattr(result, "target_words_used") else []
+        ):
+            if hasattr(used, "model_dump"):
+                used_data = used.model_dump()
+            elif isinstance(used, dict):
+                used_data = used
+            else:
+                # Backward-compatible test/mock shape: a bare item_id.
+                used_data = {"item_id": str(used)}
+
+            item_id = used_data.get("item_id")
+            if not item_id or item_id in seen_used_ids:
+                continue
+            scheduled = scheduled_by_id.get(item_id)
+            if scheduled is None:
+                continue
+            target_words_used.append({**scheduled, **used_data})
+            seen_used_ids.add(item_id)
+
+        return target_words_used
+
+    @staticmethod
+    def _dump_messages(messages: list[Any]) -> list[dict]:
+        """Serialize message models or dicts for checkpoint storage."""
+        return [m.model_dump() if hasattr(m, "model_dump") else m for m in messages]
+
+    @staticmethod
+    def _load_annotated_episodes(raw_episodes: list) -> list[list[Any]]:
+        """Restore annotated message models from checkpoint dicts."""
+        restored: list[list[Any]] = []
+        for raw_messages in raw_episodes:
+            messages: list[Any] = []
+            for raw in raw_messages:
+                if hasattr(raw, "model_dump"):
+                    messages.append(raw)
+                    continue
+                msg_type = raw.get("type") if isinstance(raw, dict) else None
+                if msg_type == "narration":
+                    messages.append(NarrationMessage.model_validate(raw))
+                elif msg_type == "dialogue":
+                    messages.append(DialogueMessage.model_validate(raw))
+            restored.append(messages)
+        return restored
 
     # ------------------------------------------------------------------
     # Checkpoint persistence

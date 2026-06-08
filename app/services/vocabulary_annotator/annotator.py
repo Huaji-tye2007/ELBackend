@@ -78,11 +78,12 @@ class VocabularyAnnotator:
         annotated: list[NarrationMessage | DialogueMessage] = []
         target_key_counts = _count_target_keys(target_words)
 
-        for msg in messages:
+        for message_index, msg in enumerate(messages):
             marks: list[Mark] = []
             claimed_indices_by_key: dict[tuple[str, str], set[int]] = {}
 
             surface_tokens = _tokenize_surface(msg.text)
+            surface_by_index = {idx: cleaned for cleaned, idx in surface_tokens}
             token_data: list[tuple[str, str, int]] | None = None
 
             for tw in target_words:
@@ -91,12 +92,27 @@ class VocabularyAnnotator:
                 target_lemma: str = tw.get("lemma") or tw.get("word") or tw["item_id"]
                 target_is_new: bool | None = tw.get("is_new")
                 target_key = _target_match_key(tw)
+                target_message_index: int | None = tw.get("message_index")
+                target_word_index: int | None = tw.get("word_index")
 
                 item: VocabularyItem | None = self.user_vocab.vocab_index.get(item_id)
                 if item is None:
                     continue
 
-                if target_surface:
+                if target_message_index is not None or target_word_index is not None:
+                    if target_message_index != message_index:
+                        continue
+                    if target_word_index is None:
+                        continue
+                    cleaned = surface_by_index.get(target_word_index)
+                    if cleaned is None:
+                        continue
+                    if target_surface and (
+                        cleaned.lower() != _normalize_surface(target_surface)
+                    ):
+                        continue
+                    matching = [(cleaned, target_word_index)]
+                elif target_surface:
                     normalized_surface = _normalize_surface(target_surface)
                     matching = [
                         (cleaned, idx)

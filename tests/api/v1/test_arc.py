@@ -91,3 +91,4 @@ async def test_arc_status(client: AsyncClient) -> None:
     assert "retry_count" in data
     assert "elapsed_seconds" in data
     assert "estimated_remaining_seconds" in data
+    assert "intermediate_data" not in data

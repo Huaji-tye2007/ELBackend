@@ -593,25 +593,30 @@ for each word occurrence:
 
 第一步：Story Rewriter 生成文本时
 LLM 自然地写出屈折形式（consuming、consumed、went）。
-Rewriter 的输出是纯叙事文本，**不包含 lemma 标注**（marks 留空）。
+Rewriter 的输出是纯叙事文本，**不包含 lemma 标注**（marks 留空），但必须在结构化响应中报告成功嵌入的目标词：
+
+```json
+{
+  "target_words_used": [
+    {"item_id": "consume_1", "surface": "consumed"}
+  ]
+}
+```
 
 第二步：Vocabulary Annotator 接收 Rewriter 输出的 messages 后
-逐词扫描文本：若在 target_words 列表中 → 取该位置的表层形式 → 查 ECDICT 得 lemma → 查 lemma_index 得 item_id。
-全程 lemma 映射由 Annotator 通过 `asset/ecdict_mobile.db` 完成，**不依赖 LLM**。
+优先使用 `target_words_used[].surface` 在文本中定位表层词，再用 `item_id → VocabularyItem` 取得释义与 FSRS 状态。仅当 rewriter 没有返回 surface 时，才通过 ECDICT 对文本 token 做 lemma 兜底定位。
 
 ```python
-surface_form = "consumed"      # Rewriter 输出的表层形式，填入 marks.word
-lemma = "consume"              # ECDICT 从表层形式反查得到的 lemma
-
-# 用 lemma 查 UserVocabulary 里对应的 item_id
-# consume 对应 item_id 是 "consume_1"（或类似）
+item_id = "consume_1"          # Rewriter 返回
+surface_form = "consumed"      # Rewriter 返回的表层形式，填入 marks.word
 item = vocab_index["consume_1"]
 
-# 用 item.state 判断 is_new
+# 用 item.fsrs_card.last_review + 集内 shown_set 判断 is_new
 is_new = (item["state"] == "UNSEEN") and ("consume_1" not in shown_in_this_episode)
 
 # 写入 marks
 mark = {
+    "item_id": item_id,
     "word": surface_form,   # "consumed"，表层形式
     "index": 5,
     "definition": item["meaning"],
@@ -622,28 +627,20 @@ mark = {
 关键点：UserVocabulary 里的 VocabularyItem 存的 word 字段是 lemma（consume），不是屈折形式。
 
 ### 一词多义处理
-同一 lemma 可能对应多个 item_id（如 `bank` → `issue_problem` 河岸 / `bank_finance` 银行）。
-因此 lemma_index 必须按 **(lemma, meaning)** 复合键构建，而非简单的 `lemma → item_id`：
+同一 lemma 可能对应多个 item_id（如 `bank` → `bank_river` 河岸 / `bank_finance` 银行）。
+主链路中不再由 Annotator/ReadingTracker 根据 `(lemma, meaning)` 二次猜 item_id；Scheduler 选出的目标词、Rewriter 返回的 `target_words_used`、Episode `marks`、Reading Log 都必须携带同一个 `item_id`。
 
 ```python
-# 简易版（仅适用于无多义词场景——bank=银行 会覆盖 bank=河岸！）
-# lemma_index = {item["word"]: item["id"] for item in user_vocab["vocabulary"]}
-
-# 正确做法：按 (lemma, meaning) → item_id 构建复合键索引
-lemma_index = {(item["word"], item["meaning"]): item["id"] for item in user_vocab["vocabulary"]}
-# {("consume", "消耗"): "consume_1", ("bank", "河岸"): "issue_problem", ("bank", "银行"): "bank_finance", ...}
-
-# 查找时：表层形式 → ECDICT lemma + mark.definition → (lemma, meaning) → item_id
+vocab_index = {item["id"]: item for item in user_vocab["vocabulary"]}
+item = vocab_index[item_id]
 ```
 
-这样 2 个索引都有了：
+`lemma_index` 仍可作为词表预处理、查词或 Annotator 缺少 surface 时的辅助索引，但不得作为学习状态主键。
 
 ```python
-vocab_index   # item_id → VocabularyItem，给 Mastery Evaluator 用
-lemma_index   # (lemma, meaning) → item_id，给 Vocabulary Annotator / ReadingTracker 用
+vocab_index   # item_id → VocabularyItem，主链路使用
+lemma_index   # (lemma, meaning) → item_id，仅辅助/兜底
 ```
-
-> **注意**：ECDICT 内部存储格式尚未全面调研，(lemma, meaning) 复合键的具体查表方式待编码阶段确定。
 
 ---
 
@@ -690,7 +687,7 @@ ReadingProgress.json
 
 + 出现次数
 + 点击次数
-+ **出现/点击均以 item_id（lemma 维度）记录**：前端上报的是表层形式的点击事件（marks.word），ReadingTracker 通过 ECDICT + lemma_index 将表层形式映射到 item_id，再写入 EpisodeReadingLog.word_logs。
++ **出现/点击均以 item_id 记录**：前端可继续使用自己的 lemma/词形逻辑，但提交给后端的 `EpisodeReadingLog.word_logs` 必须包含 `item_id`。ReadingTracker 不再通过 ECDICT + lemma_index 反推学习对象。
 
 ---
 
@@ -699,7 +696,7 @@ ReadingProgress.json
 > **设计变更 (2026-06-06)**：本模块已从显式 `MASTERED` 判定改为**隐式反馈 → FSRS 复习循环**。不再维护 `appear_count`、`click_count`、`appear_state`、`mastery_score` 等字段，词汇生命周期完全由 FSRS Card 的 `due` / `state` / `stability` / `difficulty` 管理。
 
 ### 输入
-- `EpisodeReadingLog.json`（含 `word_logs`: `[{item_id, appeared: int, clicked: int}]`）。**注意**：item_id 已由 ReadingTracker 完成表层→lemma→item_id 映射，MasteryEvaluator 直接使用。
+- `EpisodeReadingLog.json`（含 `word_logs`: `[{item_id, appeared: int, clicked: int}]`）。**注意**：item_id 由前端从 `marks[].item_id` 原样回传，MasteryEvaluator 直接使用。
 - `UserVocabulary.json`
 
 ### 输出

@@ -16,6 +16,7 @@ from app.models.fsrs import FsrsCard
 from app.services.story_rewriter.rewriter import (
     RewriteResult,
     StoryRewriter,
+    UsedTargetWord,
     _RewriteResponse,
     _LLMDialogue,
     _LLMNarration,
@@ -80,7 +81,7 @@ def _make_llm_response(
     dialogue_text: str = "Hello there.",
     dialogue_side: str = "left",
     dialogue_name: str = "Anna",
-    target_words_used: list[str] | None = None,
+    target_words_used: list[dict[str, str] | UsedTargetWord] | None = None,
 ) -> _RewriteResponse:
     """Build a mock _RewriteResponse for LLM return values."""
     messages: list[_LLMNarration | _LLMDialogue] = [
@@ -94,7 +95,10 @@ def _make_llm_response(
     ]
     return _RewriteResponse(
         messages=messages,
-        target_words_used=target_words_used or [],
+        target_words_used=[
+            item if isinstance(item, UsedTargetWord) else UsedTargetWord(**item)
+            for item in (target_words_used or [])
+        ],
     )
 
 
@@ -195,7 +199,7 @@ class TestRewriteEpisodeSuccess:
             narration_text="I entered the ancient library.",
             dialogue_text="Welcome, stranger.",
             dialogue_name="Librarian",
-            target_words_used=["tw1"],
+            target_words_used=[{"item_id": "tw1", "surface": "serendipity"}],
         )
         return client
 
@@ -283,17 +287,21 @@ class TestRewriteEpisodeSuccess:
             ],
         )
         result = await rewriter.rewrite_episode(slot, "Some text.")
-        assert result.target_words_used == ["tw1"]  # mock returns ["tw1"]
+        assert [used.item_id for used in result.target_words_used] == ["tw1"]
+        assert result.target_words_used[0].surface == "serendipity"
 
     async def test_unknown_target_words_used_filtered(self, rewriter, mock_client):
         """item_ids not in the slot's target_words are filtered out."""
-        mock_client.chat_structured.return_value.target_words_used = ["tw1", "ghost_id"]
+        mock_client.chat_structured.return_value.target_words_used = [
+            UsedTargetWord(item_id="tw1", surface="serendipity"),
+            UsedTargetWord(item_id="ghost_id", surface="ghost"),
+        ]
 
         slot = _make_episode_slot(
             target_words=[_make_target_word(item_id="tw1")],
         )
         result = await rewriter.rewrite_episode(slot, "text")
-        assert result.target_words_used == ["tw1"]  # ghost_id filtered
+        assert [used.item_id for used in result.target_words_used] == ["tw1"]
 
     async def test_uses_episode_source_text(self, rewriter, mock_client):
         """When episode has source_text, it is used instead of chapter_text."""
@@ -426,7 +434,10 @@ class TestRewriteEpisodeEdgeCases:
         """All target words are reported as used."""
         mock_client = mock.AsyncMock()
         mock_client.chat_structured.return_value = _make_llm_response(
-            target_words_used=["tw_a", "tw_b"],
+            target_words_used=[
+                {"item_id": "tw_a", "surface": "a1"},
+                {"item_id": "tw_b", "surface": "b2"},
+            ],
         )
         rewriter = StoryRewriter(llm_client=mock_client)
 
@@ -437,7 +448,7 @@ class TestRewriteEpisodeEdgeCases:
             ],
         )
         result = await rewriter.rewrite_episode(slot, "text.")
-        assert set(result.target_words_used) == {"tw_a", "tw_b"}
+        assert {used.item_id for used in result.target_words_used} == {"tw_a", "tw_b"}
 
     async def test_none_target_words_used_from_llm(self):
         """LLM returns None for target_words_used (Pydantic default_factory handles)."""
@@ -508,10 +519,13 @@ class TestRewriteResult:
                 NarrationMessage(type="narration", text="Scene begins."),
                 DialogueMessage(type="dialogue", side="left", name="Anna", text="Hi!"),
             ],
-            target_words_used=["tw1", "tw2"],
+            target_words_used=[
+                UsedTargetWord(item_id="tw1", surface="one"),
+                UsedTargetWord(item_id="tw2", surface="two"),
+            ],
         )
         assert len(result.messages) == 2
-        assert result.target_words_used == ["tw1", "tw2"]
+        assert [used.item_id for used in result.target_words_used] == ["tw1", "tw2"]
 
     def test_serialize_to_json(self):
         """RewriteResult can be serialized to JSON and back."""
@@ -522,7 +536,7 @@ class TestRewriteResult:
                     type="dialogue", side="right", name="Hero", text="Let's go."
                 ),
             ],
-            target_words_used=["abc_123"],
+            target_words_used=[UsedTargetWord(item_id="abc_123", surface="beginning")],
         )
         json_str = result.model_dump_json()
         assert "The beginning" in json_str
@@ -531,4 +545,5 @@ class TestRewriteResult:
         # Round-trip
         restored = RewriteResult.model_validate_json(json_str)
         assert restored.messages[0].text == "The beginning."
-        assert restored.target_words_used == ["abc_123"]
+        assert restored.target_words_used[0].item_id == "abc_123"
+        assert restored.target_words_used[0].surface == "beginning"

@@ -460,7 +460,7 @@ GENERATING(1/10)
   │     │       ├── 自然嵌入目标词（只嵌合适的，不强行）
   │     │       ├── 表层形式（inflected forms）自由使用
   │     │       ├── dialogue.side: right=主角, left=其他人
-  │     │       └── 报告成功嵌入的 target_words_used
+  │     │       └── 报告成功嵌入的 target_words_used: [{item_id, surface}]
   │     │
   │     ├── InstructorClient.chat_structured(messages, response_model=_RewriteResponse)
   │     │   → 调用 LLM（300s 超时），返回结构化输出
@@ -476,7 +476,11 @@ GENERATING(1/10)
   │     │        "text": "I'm Kazuhiko. Nice to meet you all."},
   │     │       ...
   │     │     ],
-  │     │     "target_words_used": ["awkward_1", "introduce_1", "bank_1"]
+  │     │     "target_words_used": [
+  │     │       {"item_id": "awkward_1", "surface": "awkward"},
+  │     │       {"item_id": "introduce_1", "surface": "introduced"},
+  │     │       {"item_id": "bank_1", "surface": "bank"}
+  │     │     ]
   │     │   }
   │     │
   │     ├── 转换为 Domain Messages（marks 留空待 Annotator 填充）:
@@ -487,7 +491,7 @@ GENERATING(1/10)
   │     │     ...
   │     │   ]
   │     │
-  │     └── 返回 RewriteResult(messages=[...], target_words_used=["awkward_1", ...])
+  │     └── 返回 RewriteResult(messages=[...], target_words_used=[{"item_id": "awkward_1", "surface": "awkward"}, ...])
   │
   ├── 写 checkpoint:
   │   phase=GENERATING(1/10), progress={current:1, total:10}

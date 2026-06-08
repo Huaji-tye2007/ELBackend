@@ -2,12 +2,10 @@
 
 Ref: AGENTS.md §11 (module #6) and documents/BACKEND_IN_OUT.md §四.6.
 
-Design (T4 refactor):
-  - Accepts target_words as ``{lemma, meaning, item_id}`` (no surface_form).
-  - Internally resolves surface forms via ECDICT ``lookup_lemma()``.
-  - Iterates tokens in message text, computes lemma per token, matches
-    against target lemmas, and creates Marks with the original surface form
-    and 0‑based word index.
+Design:
+  - Accepts target_words as ``{item_id, meaning, surface?}``.
+  - Prefer matching the exact ``surface`` reported by StoryRewriter.
+  - Falls back to ECDICT ``lookup_lemma()`` only when ``surface`` is absent.
   - ``marks.word`` stores the surface form from the text (e.g. "consuming"),
     NOT the lemma.
   - ``is_new`` is computed from ``fsrs_card.last_review`` and the intra‑episode
@@ -28,9 +26,10 @@ _SURFACE_PUNCTUATION = set(".,!?;:\"'")
 class VocabularyAnnotator:
     """Inject vocabulary marks into message texts for frontend rendering.
 
-    For each message text, tokenises the text, resolves each token's lemma
-    via ECDICT, matches against target word lemmas, computes ``is_new``
-    status, and populates the message's ``marks`` list.
+    For each message text, tokenises the text, matches StoryRewriter-reported
+    surface forms when available, computes ``is_new`` status, and populates
+    the message's ``marks`` list. ECDICT lemma matching remains as a fallback
+    for legacy target words without a surface hint.
 
     Attributes:
         user_vocab: The user's vocabulary state with O(1) item_id lookup.
@@ -64,10 +63,10 @@ class VocabularyAnnotator:
 
         Args:
             messages: Episode messages to annotate (narration or dialogue).
-            target_words: List of dicts, each with ``lemma``, ``meaning``,
-                and ``item_id`` keys.  The annotator internally resolves
-                surface forms by matching each token's ECDICT‑derived lemma
-                against ``target["lemma"]``.
+            target_words: List of dicts, each with ``item_id`` and optional
+                ``surface``. If ``surface`` is absent, the annotator falls
+                back to matching each token's ECDICT-derived lemma against
+                ``target["lemma"]`` / ``target["word"]``.
             shown_set: Set of item_ids that have already appeared in this
                 episode (mutated in-place when ``is_new=True`` marks are
                 added).
@@ -81,25 +80,33 @@ class VocabularyAnnotator:
         for msg in messages:
             marks: list[Mark] = []
 
-            # 1. Tokenise and resolve lemmas for every token in the message
-            token_data = _tokenize_and_lemmatize(msg.text, self.ecdict_db)
-            # token_data: list of (cleaned_token, lemma, index)
+            surface_tokens = _tokenize_surface(msg.text)
+            token_data: list[tuple[str, str, int]] | None = None
 
-            # 2. For each target word, find tokens whose lemma matches
             for tw in target_words:
                 item_id: str = tw["item_id"]
+                target_surface: str | None = tw.get("surface")
                 target_lemma: str = tw.get("lemma") or tw.get("word") or tw["item_id"]
 
                 item: VocabularyItem | None = self.user_vocab.vocab_index.get(item_id)
                 if item is None:
                     continue
 
-                # Collect all matching token positions for this target
-                matching: list[tuple[str, int]] = [
-                    (cleaned, idx)
-                    for cleaned, lemma, idx in token_data
-                    if lemma.lower() == target_lemma.lower()
-                ]
+                if target_surface:
+                    normalized_surface = _normalize_surface(target_surface)
+                    matching = [
+                        (cleaned, idx)
+                        for cleaned, idx in surface_tokens
+                        if cleaned.lower() == normalized_surface
+                    ]
+                else:
+                    if token_data is None:
+                        token_data = _tokenize_and_lemmatize(msg.text, self.ecdict_db)
+                    matching = [
+                        (cleaned, idx)
+                        for cleaned, lemma, idx in token_data
+                        if lemma.lower() == target_lemma.lower()
+                    ]
 
                 if not matching:
                     continue
@@ -169,6 +176,21 @@ def _tokenize_and_lemmatize(
         result.append((cleaned, lemma, i))
 
     return result
+
+
+def _tokenize_surface(text: str) -> list[tuple[str, int]]:
+    """Tokenize message text without ECDICT lookup."""
+    result: list[tuple[str, int]] = []
+    for i, tok in enumerate(text.split(" ")):
+        cleaned = tok.strip("".join(_SURFACE_PUNCTUATION))
+        if cleaned:
+            result.append((cleaned, i))
+    return result
+
+
+def _normalize_surface(surface: str) -> str:
+    """Normalize a StoryRewriter-reported surface for token matching."""
+    return surface.strip("".join(_SURFACE_PUNCTUATION)).lower()
 
 
 def _resolve_lemma(word: str, db: sqlite3.Connection) -> str:

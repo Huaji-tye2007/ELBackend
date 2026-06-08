@@ -9,13 +9,12 @@ from pydantic import BaseModel, Field, model_validator
 class WordLog(BaseModel):
     """A single word's appearance/click tracking within one episode.
 
-    If ``word`` (surface form) is provided, ReadingTracker resolves it to
-    ``item_id`` via ECDICT + lemma_index.  If ``item_id`` is already known
-    by the client it can be sent directly — the server will not overwrite
-    a non-empty ``item_id``.
+    ``item_id`` is required. The frontend obtains it from Episode marks and
+    sends it back so the backend can update FSRS state without guessing from
+    surface form + meaning.
     """
 
-    item_id: str = ""
+    item_id: str = Field(min_length=1)
     word: str | None = None
     meaning: str | None = None
     appeared: int = Field(ge=0)

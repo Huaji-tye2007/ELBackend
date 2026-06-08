@@ -361,15 +361,27 @@ class ArcGenerationManager:
 
             annotated_episodes: list[list[Any]] = []
             for i, (result, ep_dict) in enumerate(zip(rewrite_results, episodes)):
+                used_by_id: dict[str, dict[str, str]] = {}
+                for used in (
+                    result.target_words_used
+                    if hasattr(result, "target_words_used")
+                    else []
+                ):
+                    if hasattr(used, "model_dump"):
+                        used_data = used.model_dump()
+                    elif isinstance(used, dict):
+                        used_data = used
+                    else:
+                        # Backward-compatible test/mock shape: a bare item_id.
+                        used_data = {"item_id": str(used)}
+                    item_id = used_data.get("item_id")
+                    if item_id:
+                        used_by_id[item_id] = used_data
+
                 target_words_used: list[dict] = [
-                    tw
+                    {**tw, **used_by_id[tw["item_id"]]}
                     for tw in ep_dict.get("target_words", [])
-                    if tw.get("item_id")
-                    in (
-                        result.target_words_used
-                        if hasattr(result, "target_words_used")
-                        else []
-                    )
+                    if tw.get("item_id") in used_by_id
                 ]
 
                 shown_set: set[str] = set()

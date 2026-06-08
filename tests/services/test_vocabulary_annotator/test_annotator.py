@@ -268,6 +268,30 @@ class TestSurfaceFormPreserved:
         assert mark.word == "consuming"  # surface form, not lemma "consume"
         assert mark.definition == "消费"  # from VocabularyItem.meaning
 
+    def test_rewriter_surface_hint_used(self, annotator: VocabularyAnnotator) -> None:
+        """When StoryRewriter reports surface, annotator can match it directly."""
+        msg = NarrationMessage(type="narration", text="He ate with calm focus.")
+        target_words = [
+            {
+                "item_id": "consume_v1",
+                "word": "consume",
+                "meaning": "消费",
+                "surface": "ate",
+            }
+        ]
+
+        result = annotator.annotate(
+            messages=[msg],
+            target_words=target_words,
+            shown_set=set(),
+        )
+
+        assert len(result[0].marks) == 1
+        mark = result[0].marks[0]
+        assert mark.item_id == "consume_v1"
+        assert mark.word == "ate"
+        assert mark.index == 1
+
 
 class TestDialogueMessage:
     """Annotation works on DialogueMessage as well as NarrationMessage."""

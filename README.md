@@ -19,7 +19,7 @@ http://127.0.0.1:8000/api/v1
 
 - 后端返回的 `messages[].marks[]` 会携带 `item_id`
 - 前端渲染仍使用 `word/index/definition/is_new`
-- 前端上报阅读行为时优先回传 `item_id`
+- 前端上报阅读行为时必须回传 `item_id`
 - 前端可以保留既有 lemma / 词形还原逻辑；`item_id` 只是额外回传给后端的稳定学习对象主键
 
 ## 2. 本地启动
@@ -160,7 +160,7 @@ curl.exe http://127.0.0.1:8000/api/v1/health
 | GET | `/api/v1/episode/cache/status` | 无 | `{cached_count, latest_episode_id}` | - |
 | GET | `/api/v1/episode/{episode_id}` | 无 | `Episode` | `404` Episode 尚未生成 |
 | GET | `/api/v1/dictionary/{word}` | 无 | `{word, meaning, examples?}` | `404` 查不到词；`503` ECDICT 不可用 |
-| POST | `/api/v1/reading/log` | `{episode_id, word_logs:[{item_id, appeared, clicked}]}` | `{ "updated": true }` | `400` 点击数非法或旧格式解析失败；`422` 请求体校验失败 |
+| POST | `/api/v1/reading/log` | `{episode_id, word_logs:[{item_id, appeared, clicked}]}` | `{ "updated": true }` | `400` 点击数非法；`422` 缺少/空 `item_id` 或请求体校验失败 |
 | POST | `/api/v1/reading/finish` | `{ "episode_id": number }` | `{ "vocab_updated_count": number }` | `404` 无阅读日志或无词表 |
 | GET | `/api/v1/progress` | 无 | `ReadingProgress` | - |
 | GET | `/api/v1/reading/progress` | 无 | `ReadingProgress` | - |
@@ -339,7 +339,7 @@ curl.exe http://127.0.0.1:8000/api/v1/dictionary/consumed
 POST /api/v1/reading/log
 ```
 
-推荐前端在用户完成一集时上报本集所有 marks 的出现次数与点击次数。**主逻辑可以沿用现有 lemma 方案，只要把对应 mark 的 `item_id` 带回后端即可。**
+推荐前端在用户完成一集时上报本集所有 marks 的出现次数与点击次数。**主逻辑可以沿用现有 lemma 方案，但 reading log 必须把对应 mark 的 `item_id` 带回后端。**
 
 请求：
 
@@ -363,28 +363,10 @@ POST /api/v1/reading/log
 
 字段说明：
 
-- `item_id`：学习对象主键，来自 `marks[].item_id`
+- `item_id`：必填。学习对象主键，来自 `marks[].item_id`
 - `appeared`：该学习对象本集出现次数
 - `clicked`：用户点击查看释义次数
 - `clicked <= appeared`
-
-旧前端兼容格式仍可使用 `word + meaning`：
-
-```json
-{
-  "episode_id": 1,
-  "word_logs": [
-    {
-      "word": "consumed",
-      "meaning": "消耗",
-      "appeared": 1,
-      "clicked": 0
-    }
-  ]
-}
-```
-
-兼容格式会触发后端 ECDICT/lemma 兜底解析；带回 `item_id` 后，后端可以直接定位学习对象，减少多义词/派生词歧义。
 
 响应：
 
@@ -392,7 +374,7 @@ POST /api/v1/reading/log
 { "updated": true }
 ```
 
-如果旧格式无法把 `word + meaning` 解析到学习对象，会返回 `400`，避免静默丢失学习记录。
+如果缺少 `item_id` 或传入空字符串，会由 Pydantic/FastAPI 返回 `422`，避免后端用表层词和释义二次猜测学习对象。
 
 ### 5.11 完成本集并更新 FSRS
 
@@ -908,7 +890,8 @@ mark.item_id
 
 | HTTP | 场景                        | 前端建议                            |
 | ---- | --------------------------- | ----------------------------------- |
-| 400  | 阅读日志非法或旧格式无法解析 item_id | 优先检查是否回传了 `marks[].item_id` |
+| 400  | 阅读日志计数非法，例如 `clicked > appeared` | 检查出现/点击统计 |
+| 422  | 阅读日志缺少或传入空 `item_id` | 检查是否回传了 `marks[].item_id` |
 | 404  | 词表、章节或 episode 不存在 | 引导重新上传或等待生成完成          |
 | 409  | Arc 正在生成                | 继续轮询 `/arc/status`              |
 | 503  | ECDICT 不可用               | 提示词典资源缺失                    |

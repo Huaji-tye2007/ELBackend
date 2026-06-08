@@ -151,7 +151,7 @@ def _make_rewrite_result() -> mock.MagicMock:
             type="dialogue", side="right", name="Hero", text="Let us go.", marks=[]
         ),
     ]
-    result.target_words_used = ["item_1"]
+    result.target_words_used = [{"item_id": "item_1", "surface": "journey"}]
     result.model_dump.return_value = {
         "messages": [
             {"type": "narration", "text": "I began the journey.", "marks": []},
@@ -163,7 +163,7 @@ def _make_rewrite_result() -> mock.MagicMock:
                 "marks": [],
             },
         ],
-        "target_words_used": ["item_1"],
+        "target_words_used": [{"item_id": "item_1", "surface": "journey"}],
     }
     return result
 

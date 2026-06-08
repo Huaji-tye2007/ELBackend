@@ -101,16 +101,17 @@ class TestTrack:
         with pytest.raises(ValueError, match="chapter_offset must be in"):
             tracker.track(_make_log_dict(1), chapter_offset=-0.1)
 
-    def test_surface_word_without_ecdict_raises(self, tmp_path: Path) -> None:
-        """word logs that omit item_id require ECDICT resolution instead of being skipped."""
-        tracker = ReadingTracker(tmp_path)
-        log = EpisodeReadingLog(
-            episode_id=1,
-            word_logs=[WordLog(word="consumed", meaning="消耗", appeared=1, clicked=0)],
-        )
+    def test_word_log_without_item_id_rejected(self) -> None:
+        """Reading logs must include item_id from episode marks."""
+        from pydantic import ValidationError
 
-        with pytest.raises(ValueError, match="ECDICT database is required"):
-            tracker.track(log)
+        with pytest.raises(ValidationError):
+            EpisodeReadingLog(
+                episode_id=1,
+                word_logs=[
+                    {"word": "consumed", "meaning": "消耗", "appeared": 1, "clicked": 0}
+                ],
+            )
 
 
 class TestPersistence:

@@ -72,8 +72,8 @@
 - **学习状态全部按 `item_id` 管理**（is_new、history_window、FSRS card），不按表层形式，也不按 lemma。
 - **item_id-first 全链路**：
   1. **VocabularyScheduler** 从 `UserVocabulary` 选出 `TargetWord(item_id, word, meaning, is_new)`。
-  2. **StoryRewriter** 按 `item_id` 使用目标词，并返回成功使用的 `target_words_used: list[item_id]`。
-  3. **VocabularyAnnotator** 用 `item_id → VocabularyItem` 取得 meaning / FSRS 状态，定位文本中的表层形式后填 `marks.item_id`、`marks.word`、`marks.is_new`。
+  2. **StoryRewriter** 按 `item_id` 使用目标词，并返回成功使用的 `target_words_used: list[{item_id, surface}]`，其中 `surface` 是生成文本里的精确表层形式。
+  3. **VocabularyAnnotator** 用 `target_words_used[].surface` 定位文本，用 `item_id → VocabularyItem` 取得 meaning / FSRS 状态后填 `marks.item_id`、`marks.word`、`marks.is_new`；仅当 rewriter 未返回 surface 时才用 ECDICT 做兜底定位。
   4. **Frontend** 渲染时使用 `marks.word/index/definition/is_new`，可继续既有 lemma 逻辑；上报阅读日志时回传对应 `item_id`。
   5. **ReadingTracker / MasteryEvaluator** 直接按 `item_id` 记录行为并更新 FSRS card。
 - `vocab` 数组可由 `messages[].marks` 推导，写出来仅为方便前端；若由后端生成，应同步携带 `item_id`。
@@ -83,13 +83,13 @@
 - ECDICT 不再是学习状态主链路，只用于：
   - 词表上传预处理时辅助判断 headword/forms。
   - Annotator 在 rewriter 未返回明确 surface 时做表层词定位兜底。
-  - 兼容旧前端未上报 `item_id`、只上报 `word + meaning` 的日志。
-- 兼容流程：遇到表层形式（如 `"went"`）→ 查 ECDICT 词条 → 若 `exchange` 字段含 `0:<lemma>`（如 `0:go`）则取该 lemma → 用 `(lemma, meaning)` 在 `UserVocabulary` 里兜底查 `item_id`。
+- ReadingTracker / MasteryEvaluator 不再用 ECDICT 反推学习对象；reading log 的 `item_id` 是必填字段。
+- 兜底定位流程：Annotator 在缺少 rewriter surface 时，遇到表层形式（如 `"went"`）→ 查 ECDICT 词条 → 若 `exchange` 字段含 `0:<lemma>`（如 `0:go`）则取该 lemma → 用目标词 lemma 判断文本位置。
 - 若 `exchange` 为空或词条不存在，表层形式本身即原形。
 - **禁止**调用任何外部 lemmatizer 库。
 - 在内存建两个索引（加载时一次性构建）：
   - `vocab_index: item_id → VocabularyItem`（O(1) 查项）
-  - `lemma_index: (lemma, meaning) → item_id`（仅兼容旧日志和兜底解析；新链路不得依赖它作为状态主键）。
+  - `lemma_index: (lemma, meaning) → item_id`（仅供词表/词形辅助与兜底解析参考；新链路不得依赖它作为状态主键）。
 
 ## 7. 运行 / 开发命令
 
@@ -240,7 +240,7 @@ ELBackend/
 | GET    | `/episode/{episode_id}`        | –                                     | `Episode`（FormatSpec v3）            | 前端消费的剧集 JSON                    |
 | GET    | `/episode/cache/status`        | –                                     | `{cached_count, latest_episode_id}`   | Episode Cache 状态                     |
 | GET    | `/progress`                    | –                                     | `ReadingProgress`                     | 当前阅读进度                           |
-| POST   | `/reading/log`                 | `{episode_id, word_logs: [{item_id, appeared, clicked}]}` | `{updated: bool}`                     | 上报阅读行为（点击/出现）；`word+meaning` 仅兼容旧前端 |
+| POST   | `/reading/log`                 | `{episode_id, word_logs: [{item_id, appeared, clicked}]}` | `{updated: bool}`                     | 上报阅读行为（点击/出现）；`item_id` 必填 |
 | POST   | `/reading/finish`              | `{episode_id}`                        | `{vocab_updated_count: int}`          | 完成一集，触发 Mastery Evaluator       |
 | GET    | `/dictionary/{word}`           | –                                     | `{word, meaning, examples?: []}`      | 查词（用于 marks 点击展开）            |
 | POST   | `/arc/generate`                | `{arc_id?: str}`                      | `{job_id, status: "queued"}` 或 `409` | 手动触发 Arc 生成（详见 §14）          |
@@ -341,7 +341,7 @@ ELBackend/
 | `app/models/word_sense.py`     | `WordSense`、`WordSenseDB`                                                     | `dict[word, {is_polysemous: bool, senses: list[{id, meaning}]}]`                                                                                                                                                                                                                        |
 | `app/models/chapter.py`        | `Chapter`、`ChapterDB`                                                         | `chapter_id`、`title`、`raw_text`、`summary`、`characters: list[str]`、`world_setting`、`estimated_reading_time: int`                                                                                                                                                                   |
 | `app/models/progress.py`       | `ReadingProgress`                                                              | `current_chapter`、`current_episode`、`chapter_offset: float = Field(ge=0, le=1)`、`total_episodes_read: int = Field(ge=0)`                                                                                                                                                             |
-| `app/models/episode_log.py`    | `WordLog`、`EpisodeReadingLog`                                                 | `word_logs: list[{item_id, appeared: int, clicked: int}]`；`word`/`meaning` 字段只作旧前端兼容兜底                                                                                                                                                                                        |
+| `app/models/episode_log.py`    | `WordLog`、`EpisodeReadingLog`                                                 | `word_logs: list[{item_id: str, appeared: int, clicked: int}]`；`item_id` 必填且非空，`word`/`meaning` 仅可作为调试/展示冗余，不参与状态解析                                                                                                                                                                                        |
 | `app/models/arc_plan.py`       | `PendingWord`、`EpisodeSlot`、`ArcPlan`                                        | `arc_id`、`pending_words`、`episodes: list[EpisodeSlot]`，`EpisodeSlot.episode_type: Literal["main","side"]`                                                                                                                                                                            |
 | `app/models/episode.py`        | `Meta`、`NarrationMessage`、`DialogueMessage`、`Mark`、`VocabEntry`、`Episode` | `Meta.kind: Literal["main","side"]`、`Mark.item_id`（前端回传用主键）、`Mark.index: int = Field(ge=0)`（**按空格分词的词索引**）、`Mark.word: str`（**表层形式**）、`DialogueMessage.side: Literal["left","right"]`（**right=主角**）                                                        |
 | `app/models/arc_generation.py` | `ArcGenerationState`                                                           | `arc_id: str`、`phase: Literal["IDLE","PLANNING","SCHEDULING","GENERATING","ANNOTATING","FORMATTING","COMPLETE","FAILED"]`、`progress: {current: int, total: int}`、`retry_count: int = Field(ge=0)`、`last_error: str \| None`、`started_at: datetime \| None`、`updated_at: datetime` |
@@ -362,7 +362,7 @@ def lookup_lemma(surface: str, db: sqlite3.Connection) -> str: ...
 - 查 `asset/ecdict_mobile.db` 的 `exchange` 字段，找到 `0:<lemma>` 则返回 lemma
 - 若 db 不存在 → 抛 `ECDictUnavailableError`，由路由层翻译为 HTTP 503
 - 若 word 不在词典或无 `0:` 标记 → 返回 surface 本身
-- 新链路不得用该函数作为学习状态主键解析；优先使用前端回传的 `item_id`。该函数只用于词形辅助、查词和旧日志兼容。
+- 新链路不得用该函数作为学习状态主键解析；ReadingTracker / MasteryEvaluator 直接使用前端回传的 `item_id`。该函数只用于词形辅助、查词和 Annotator 兜底定位。
 - **禁止**调用任何外部 lemmatizer（NLTK / spaCy / pyinflect / lemminflect）
 
 ### `app/utils/word_index.py` — 词索引定位

@@ -38,6 +38,16 @@ class _LLMDialogue(BaseModel):
     text: str
 
 
+class UsedTargetWord(BaseModel):
+    """A target word actually incorporated by the LLM."""
+
+    item_id: str
+    surface: str = Field(
+        min_length=1,
+        description="The exact surface form used in the generated text, e.g. consumed",
+    )
+
+
 class _RewriteResponse(BaseModel):
     """LLM structured output — a light-novel episode with target words used.
 
@@ -49,9 +59,9 @@ class _RewriteResponse(BaseModel):
         default_factory=list,
         description="Ordered list of narration and dialogue messages",
     )
-    target_words_used: list[str] = Field(
+    target_words_used: list[UsedTargetWord] = Field(
         default_factory=list,
-        description="Item IDs of target words successfully incorporated into the messages",
+        description="Target words successfully incorporated, with item_id and surface form",
     )
 
 
@@ -70,7 +80,7 @@ class RewriteResult(BaseModel):
     """
 
     messages: list[Message]
-    target_words_used: list[str]
+    target_words_used: list[UsedTargetWord]
 
 
 # ---------------------------------------------------------------------------
@@ -85,7 +95,7 @@ WRITING GUIDELINES:
    - "side": "right" for the protagonist (main character, the "I" narrator)
    - "side": "left" for all other characters
    - "name": the speaker's name
-3. **Target words** — You will be given target vocabulary words (with Chinese meanings). Your job is to incorporate as many of them as NATURALLY as possible into the narrative. Do NOT force them — only use a word if it truly fits the scene. For each word you successfully use, report its item_id in target_words_used.
+3. **Target words** — You will be given target vocabulary words (with Chinese meanings). Your job is to incorporate as many of them as NATURALLY as possible into the narrative. Do NOT force them — only use a word if it truly fits the scene. For each word you successfully use, report both its item_id and the exact surface form you wrote in target_words_used.
 4. **Surface forms welcome** — Feel free to use the words in their natural inflected forms (e.g., "consuming", "went", "ran") — you do NOT need to use the base lemma form.
 5. **Style** — Keep the English accessible (think young adult / light novel level). Vivid but not overly complex. Show emotions through actions and dialogue, not abstract descriptions.
 6. **Length** — Produce a complete scene with multiple message exchanges. Aim for 6–12 messages covering both narration and dialogue.
@@ -149,7 +159,7 @@ def _build_user_prompt(
         lines.append("## Target Vocabulary Words")
         lines.append(
             "Integrate as many of the following words naturally into the story. "
-            "For each word you use, report its item_id in target_words_used."
+            "For each word you use, report its item_id and exact surface form in target_words_used."
         )
         for tw in target_words:
             label = "NEW" if tw.is_new else "REVIEW"
@@ -162,7 +172,7 @@ def _build_user_prompt(
     lines.append(
         "Output a JSON object with:\n"
         '  - "messages": a list of narration/dialogue messages\n'
-        '  - "target_words_used": list of item_ids you successfully incorporated'
+        '  - "target_words_used": list of objects like {"item_id": "...", "surface": "..."}'
     )
 
     return "\n".join(lines)
@@ -309,10 +319,12 @@ class StoryRewriter:
 
         # Validate target_words_used — only include item_ids that were actually in the target list
         valid_ids = {tw.item_id for tw in target_words}
-        validated_used = [uid for uid in response.target_words_used if uid in valid_ids]
+        validated_used = [
+            used for used in response.target_words_used if used.item_id in valid_ids
+        ]
 
         if response.target_words_used:
-            extra_ids = set(response.target_words_used) - valid_ids
+            extra_ids = {used.item_id for used in response.target_words_used} - valid_ids
             if extra_ids:
                 logger.warning(
                     "LLM reported target_words_used with unknown item_ids: %s",

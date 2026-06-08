@@ -63,6 +63,17 @@ class TestVocabularyItem:
         assert vi.history_window == [1, 1, 1, 1, 1]
         assert len(vi.history_window) == 5
 
+    def test_chapter_first_seen_can_be_null(self) -> None:
+        """VocabularyItem may not know first chapter at upload time."""
+        vi = VocabularyItem(
+            id="unknown_chapter_1",
+            word="unknown",
+            meaning="未知",
+            chapter_first_seen=None,
+            fsrs_card=FsrsCard(state=1, due=datetime.now(timezone.utc)),
+        )
+        assert vi.chapter_first_seen is None
+
     def test_invalid_chapter_first_seen_zero(self) -> None:
         """VocabularyItem with chapter_first_seen=0 should raise ValidationError."""
         with pytest.raises(ValidationError):

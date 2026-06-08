@@ -16,7 +16,7 @@ class VocabularyItem(BaseModel):
     id: str
     word: str
     meaning: str
-    chapter_first_seen: int = Field(ge=1)
+    chapter_first_seen: int | None = Field(default=None, ge=1)
     history_window: list[int] = Field(default_factory=lambda: [1, 1, 1, 1, 1])
     fsrs_card: FsrsCard
 

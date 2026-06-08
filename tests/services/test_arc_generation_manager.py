@@ -359,6 +359,81 @@ class TestFullPipeline:
         assert manager._episode_formatter.format_episode.call_count == 2
         assert manager._episode_formatter.write_cache.call_count == 2
 
+    async def test_annotating_preserves_rewriter_used_order(
+        self, manager, pipeline_data, tmp_path: Path
+    ):
+        """Annotator receives used targets in the LLM-reported text order."""
+        data_dir = tmp_path / "data"
+        data_dir.mkdir()
+        monkeypatch_checkpoint(manager, data_dir / "arc_generation_state.json")
+
+        pipeline_data["chapters"] = [
+            _make_chapter(raw_text="The bank appeared twice.")
+        ]
+
+        arc_plan = _make_arc_plan(
+            episodes=[
+                _make_episode_slot(
+                    episode_id=1,
+                    source_text="The bank appeared twice.",
+                )
+            ]
+        )
+        manager._arc_planner.plan_next_arc.return_value = (arc_plan, 1, 0)
+
+        async def _schedule_polysemy(arc_plan, user_vocab, now=None, **kwargs):
+            arc_plan["episodes"][0]["target_words"] = [
+                {
+                    "item_id": "bank_money",
+                    "word": "bank",
+                    "meaning": "银行",
+                    "is_new": True,
+                },
+                {
+                    "item_id": "bank_river",
+                    "word": "bank",
+                    "meaning": "河岸",
+                    "is_new": True,
+                },
+            ]
+            return arc_plan
+
+        manager._vocab_scheduler.side_effect = _schedule_polysemy
+
+        rewrite_result = mock.MagicMock()
+        rewrite_result.messages = [
+            NarrationMessage(
+                type="narration",
+                text="I sat by the river bank before visiting the bank.",
+                marks=[],
+            )
+        ]
+        rewrite_result.target_words_used = [
+            {"item_id": "bank_river", "surface": "bank"},
+            {"item_id": "bank_money", "surface": "bank"},
+        ]
+        rewrite_result.model_dump.return_value = {
+            "messages": [
+                {
+                    "type": "narration",
+                    "text": "I sat by the river bank before visiting the bank.",
+                    "marks": [],
+                }
+            ],
+            "target_words_used": rewrite_result.target_words_used,
+        }
+        manager._story_rewriter.rewrite_episode.return_value = rewrite_result
+
+        await manager._run_pipeline(**pipeline_data)
+
+        target_words = manager._vocab_annotator.annotate.call_args.kwargs[
+            "target_words"
+        ]
+        assert [tw["item_id"] for tw in target_words] == [
+            "bank_river",
+            "bank_money",
+        ]
+
     async def test_lazy_annotator_factory_used_during_annotating(
         self,
         mock_arc_planner,

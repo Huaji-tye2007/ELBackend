@@ -60,6 +60,7 @@ async def schedule(
 
     # Track arc-wide is_new dedup
     arc_new_ids: set[str] = set()
+    arc_repeat_pool: list[Any] = []
 
     for episode in episodes:
         source_text: str | None = episode.get("source_text")
@@ -69,9 +70,10 @@ async def schedule(
         candidate_count = episode_limit * 3
         unseen_batch = unseen_pool[unseen_pos : unseen_pos + candidate_count]
         review_batch = review_pool[review_pos : review_pos + candidate_count]
+        repeat_batch = arc_repeat_pool[:candidate_count]
 
         # Score context for all candidates (batches are already list[VocabularyItem])
-        all_candidates = unseen_batch + review_batch
+        all_candidates = unseen_batch + review_batch + repeat_batch
         context_scores: dict[str, float] = await score_context(
             source_text, all_candidates, llm_client
         )
@@ -89,6 +91,9 @@ async def schedule(
             cs = context_scores.get(item.id, 0.5)
             fs = final_score(item, cs, now)
             review_scored.append((fs, item))
+        for item in repeat_batch:
+            cs = context_scores.get(item.id, 0.5)
+            review_scored.append((cs, item))
 
         # Allocate based on episode type
         if episode_type == "side":
@@ -113,9 +118,21 @@ async def schedule(
 
         # Advance pool positions by actually consumed counts (not batch size),
         # so unconsumed candidates remain available for subsequent episodes.
+        review_batch_ids = {item.id for item in review_batch}
+        unseen_by_id = {item.id: item for item in unseen_batch}
         unseen_consumed = sum(1 for tw in target_words if tw.is_new)
-        review_consumed = sum(1 for tw in target_words if not tw.is_new)
+        review_consumed = sum(
+            1
+            for tw in target_words
+            if not tw.is_new and tw.item_id in review_batch_ids
+        )
         unseen_pos += unseen_consumed
         review_pos += review_consumed
+
+        repeat_ids = {item.id for item in arc_repeat_pool}
+        for tw in target_words:
+            if tw.is_new and tw.item_id in unseen_by_id and tw.item_id not in repeat_ids:
+                arc_repeat_pool.append(unseen_by_id[tw.item_id])
+                repeat_ids.add(tw.item_id)
 
     return arc_plan

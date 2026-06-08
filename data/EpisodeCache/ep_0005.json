@@ -1,0 +1,133 @@
+{
+  "meta": {
+    "ep": 5,
+    "title": "Episode 5",
+    "kind": "main"
+  },
+  "messages": [
+    {
+      "type": "narration",
+      "text": "She smiled. It was a small smile, barely a curve at the corner of her lips, but it transformed her face entirely. The distant, cryptic girl from the cafeteria became suddenly, startlingly human.",
+      "marks": []
+    },
+    {
+      "type": "dialogue",
+      "side": "right",
+      "name": "Kazuhiko",
+      "text": "\"So I have been told,\" I admitted.",
+      "marks": []
+    },
+    {
+      "type": "narration",
+      "text": "Mei closed her book and set it on the table between us. The leather cover was embossed with a symbol I did not recognize — a circle intersected by a diagonal line, like a stylized eye.",
+      "marks": []
+    },
+    {
+      "type": "dialogue",
+      "side": "left",
+      "name": "Mei",
+      "text": "\"My grandmother gave me this book. She said it contains all the answers I would ever need. But I have read it three times, cover to cover, and I still do not understand half of it.\"",
+      "marks": []
+    },
+    {
+      "type": "dialogue",
+      "side": "right",
+      "name": "Kazuhiko",
+      "text": "\"Maybe the answers are not in the book,\" I said, surprising myself. \"Maybe they are in the reading.\"",
+      "marks": []
+    },
+    {
+      "type": "narration",
+      "text": "She tilted her head, considering this.",
+      "marks": []
+    },
+    {
+      "type": "dialogue",
+      "side": "left",
+      "name": "Mei",
+      "text": "\"That is either very profound or very stupid. I have not decided which.\"",
+      "marks": []
+    },
+    {
+      "type": "dialogue",
+      "side": "right",
+      "name": "Kazuhiko",
+      "text": "\"Let me know when you figure it out.\"",
+      "marks": []
+    },
+    {
+      "type": "narration",
+      "text": "For the first time since we had met, Mei laughed. It was a quiet laugh, barely more than a breath, but it was real. And in that moment, sitting across from each other in the dusty silence of the library, something shifted between us — an invisible thread connecting two solitary people who had both been looking for somewhere to belong.",
+      "marks": [
+        {
+          "item_id": "invisible_f681be07",
+          "word": "invisible",
+          "index": 46,
+          "definition": "隐形的",
+          "is_new": false
+        }
+      ]
+    },
+    {
+      "type": "dialogue",
+      "side": "left",
+      "name": "Mei",
+      "text": "\"You are different.\"",
+      "marks": []
+    },
+    {
+      "type": "dialogue",
+      "side": "right",
+      "name": "Kazuhiko",
+      "text": "\"Different from what?\"",
+      "marks": []
+    },
+    {
+      "type": "dialogue",
+      "side": "left",
+      "name": "Mei",
+      "text": "\"From the others.\" She picked up her book and stood, preparing to leave. \"I will see you tomorrow, Kazuhiko.\"",
+      "marks": []
+    },
+    {
+      "type": "narration",
+      "text": "And then she was gone, her footsteps fading into the creaks and whispers of the old library, leaving me alone with a poetry book I still was not reading and a question I could not quite formulate. I felt an awkward knot in my stomach, unsure if I had said something wrong. Glancing out the window, I noticed the river bank beyond the campus, its edge littered with autumn leaves, and I wondered if she would ever reveal what lay beneath her cryptic smile.",
+      "marks": [
+        {
+          "item_id": "awkward_8a609961",
+          "word": "awkward",
+          "index": 40,
+          "definition": "尴尬的",
+          "is_new": false
+        },
+        {
+          "item_id": "bank_105e10d9",
+          "word": "bank",
+          "index": 60,
+          "definition": "河岸",
+          "is_new": false
+        }
+      ]
+    }
+  ],
+  "vocab": [
+    {
+      "item_id": "invisible_f681be07",
+      "word": "invisible",
+      "definition": "隐形的",
+      "is_new": false
+    },
+    {
+      "item_id": "awkward_8a609961",
+      "word": "awkward",
+      "definition": "尴尬的",
+      "is_new": false
+    },
+    {
+      "item_id": "bank_105e10d9",
+      "word": "bank",
+      "definition": "河岸",
+      "is_new": false
+    }
+  ]
+}

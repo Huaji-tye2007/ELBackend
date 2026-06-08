@@ -1,0 +1,109 @@
+{
+  "meta": {
+    "ep": 2,
+    "title": "Episode 2",
+    "kind": "main"
+  },
+  "messages": [
+    {
+      "type": "narration",
+      "text": "I barely carried my feet between the desks, feeling the weight of every glance in the room. 'You looked like a deer caught in headlights up there. Don't worry, it gets easier.' Anna's voice pulled me back to the present, but I didn't know what to say, so I just nodded. She seemed satisfied and turned back toward Sensei Tanaka, who was already scribbling differential calculus on the blackboard. My mind was elsewhere, replaying the moment I had stepped through that doorway. I'd been the new kid before, but high school was a different world — a complex ecosystem of social hierarchies and unspoken rules I hadn't decoded yet.",
+      "marks": []
+    },
+    {
+      "type": "narration",
+      "text": "I scanned the room, trying to memorize faces I'd forget by tomorrow. A bleached-haired boy slouched in the back corner, not paying attention. A group of girls near the window passed notes despite Sensei Tanaka's periodic glares. In the front row, a girl took notes with meticulous precision, her pen never pausing. And Anna kept glancing at me from the corner of her eye, as if she waited for something — as if she knew something I didn't.",
+      "marks": []
+    },
+    {
+      "type": "narration",
+      "text": "The bell rang at noon, a shrill tone that shattered my fragile concentration. The classroom erupted into motion — chairs scraping, bags zipping, voices rising. I stayed seated, uncertain of where to go. The cafeteria was somewhere on the first floor, but the thought of navigating that crowded space alone made my stomach tighten. I felt invisible, a ghost among students who all seemed to know their place.",
+      "marks": [
+        {
+          "item_id": "invisible_f681be07",
+          "word": "invisible",
+          "index": 56,
+          "definition": "隐形的",
+          "is_new": false
+        }
+      ]
+    },
+    {
+      "type": "narration",
+      "text": "'Hey.' Anna's voice came from my left. She had turned in her chair and was facing me, chin resting on her crossed arms. 'You look lost.'",
+      "marks": []
+    },
+    {
+      "type": "dialogue",
+      "side": "right",
+      "name": "I",
+      "text": "'I'm fine,' I said, though my voice probably betrayed me.",
+      "marks": []
+    },
+    {
+      "type": "dialogue",
+      "side": "left",
+      "name": "Anna",
+      "text": "'Liar.' She smiled, and this time there was something genuine in it. 'Come on. I'll show you around. Consider it a welcome gift.'",
+      "marks": []
+    },
+    {
+      "type": "narration",
+      "text": "Before I could refuse, she was already waiting by the doorway, relaxed and confident. With a reluctant sigh, I gathered my bag and followed her into the corridor. The hallway was a river of students, and Anna navigated it with ease. I trailed behind, trying not to bump into anyone, feeling awkward and out of place.",
+      "marks": [
+        {
+          "item_id": "awkward_8a609961",
+          "word": "awkward",
+          "index": 51,
+          "definition": "尴尬的",
+          "is_new": false
+        }
+      ]
+    },
+    {
+      "type": "narration",
+      "text": "As we walked, I noticed Anna's presence created a ripple in the crowd. People nodded, whispered, glanced at me — the stranger following her like a lost puppy. 'You're popular,' I said, not meaning to say it out loud.",
+      "marks": []
+    },
+    {
+      "type": "dialogue",
+      "side": "left",
+      "name": "Anna",
+      "text": "'Something like that.' She glanced back, her expression unreadable.",
+      "marks": []
+    },
+    {
+      "type": "narration",
+      "text": "We reached the cafeteria, which had large windows overlooking a small river. I could see the bank lined with willow trees, their branches dipping into the water. It was a peaceful sight, a stark contrast to the bustling room. Anna led me to a table near the window where two students were already seated: the meticulous note-taker from the front row and a boy with glasses I hadn't noticed before.",
+      "marks": [
+        {
+          "item_id": "bank_105e10d9",
+          "word": "bank",
+          "index": 16,
+          "definition": "河岸",
+          "is_new": false
+        }
+      ]
+    }
+  ],
+  "vocab": [
+    {
+      "item_id": "invisible_f681be07",
+      "word": "invisible",
+      "definition": "隐形的",
+      "is_new": false
+    },
+    {
+      "item_id": "awkward_8a609961",
+      "word": "awkward",
+      "definition": "尴尬的",
+      "is_new": false
+    },
+    {
+      "item_id": "bank_105e10d9",
+      "word": "bank",
+      "definition": "河岸",
+      "is_new": false
+    }
+  ]
+}

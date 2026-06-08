@@ -59,7 +59,7 @@ def test_preprocess_single_word_not_in_db(preprocessor: VocabularyPreprocessor) 
     assert item.id == "zoology_1"
     assert item.word == "zoology"
     assert item.meaning == ""
-    assert item.chapter_first_seen == 1
+    assert item.chapter_first_seen is None
 
 
 # ── Test: single word (in WordSenseDB, non-polysemous) ──────
@@ -107,17 +107,46 @@ def test_preprocess_user_meaning_no_match(preprocessor: VocabularyPreprocessor) 
 
     assert len(result.vocabulary) == 1
     item = result.vocabulary[0]
-    assert item.id == "bank_1"
+    assert item.id.startswith("bank_")
+    assert item.id not in {"bank_river", "bank_finance"}
     assert item.meaning == "堤坝"
+
+
+def test_explicit_meanings_do_not_merge_on_coarse_db_sense() -> None:
+    """Different user meanings remain different items even if DB merges them."""
+    coarse_db = WordSenseDB.model_validate(
+        {
+            "bank": {
+                "is_polysemous": True,
+                "senses": [
+                    {"id": "bank_1", "meaning": "银行, 堤, 岸"},
+                    {"id": "bank_2", "meaning": "[医] 库"},
+                ],
+            }
+        }
+    )
+    preprocessor = VocabularyPreprocessor(coarse_db)
+
+    result = preprocessor.preprocess(
+        "user_1",
+        [
+            {"word": "bank", "meaning": "河岸"},
+            {"word": "bank", "meaning": "银行"},
+        ],
+    )
+
+    assert len(result.vocabulary) == 2
+    assert {item.meaning for item in result.vocabulary} == {"河岸", "银行"}
+    assert len({item.id for item in result.vocabulary}) == 2
 
 
 # ── Test: chapter_first_seen ─────────────────────────────────
 
 
 def test_chapter_first_seen_default(preprocessor: VocabularyPreprocessor) -> None:
-    """Default chapter_id=1 produces chapter_first_seen=1."""
+    """Default chapter_id=None produces chapter_first_seen=None."""
     result = preprocessor.preprocess("user_1", [{"word": "meticulous"}])
-    assert result.vocabulary[0].chapter_first_seen == 1
+    assert result.vocabulary[0].chapter_first_seen is None
 
 
 def test_chapter_first_seen_custom(preprocessor: VocabularyPreprocessor) -> None:
@@ -138,6 +167,8 @@ def test_chapter_id_must_be_positive(preprocessor: VocabularyPreprocessor) -> No
 def test_fsrs_card_defaults(preprocessor: VocabularyPreprocessor) -> None:
     """New items receive fsrs_card with state=1, last_review=None, stability=None, difficulty=None."""
     result = preprocessor.preprocess("user_1", [{"word": "meticulous"}])
+
+    assert result.vocabulary[0].history_window == [1, 1, 1, 1, 1]
 
     card = result.vocabulary[0].fsrs_card
     assert isinstance(card, FsrsCard)
@@ -210,7 +241,7 @@ def test_vocabulary_item_constraints(preprocessor: VocabularyPreprocessor) -> No
 
     # Re-validate individually
     validated = VocabularyItem.model_validate(item.model_dump())
-    assert validated.chapter_first_seen >= 1
+    assert validated.chapter_first_seen is None
     assert isinstance(validated.fsrs_card, FsrsCard)
     assert validated.fsrs_card.state in (1, 2, 3)
 

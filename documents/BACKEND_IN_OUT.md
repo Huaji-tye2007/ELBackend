@@ -22,7 +22,7 @@
         │
         ▼
 Vocabulary Preprocessor
-读取词表 → 查 WordSenseDB 拆分多义词 → 初始化 fsrs_card（last_review=null）→ 写入 UserVocabDB
+读取词表 → 以用户上传的 (word, meaning) 为主建立学习对象；缺少 meaning 时用 WordSenseDB 补全/拆分 → 初始化 fsrs_card（last_review=null）→ 写入 UserVocabDB
         │
         ▼
 UserVocab.json
@@ -135,7 +135,7 @@ Mastery Evaluator
   "id": "issue_problem",
   "word": "issue",
   "meaning": "问题",
-  "chapter_first_seen": 3,
+  "chapter_first_seen": null,
   "history_window": [1, 1, 0, 1, 1],
   "fsrs_card": {
     "card_id": 1717243200000,
@@ -157,8 +157,8 @@ Mastery Evaluator
 | id                 | 词汇唯一标识符，带义项后缀（如 issue_problem vs issue_topic），区分多义词                                                                       |
 | word               | 英文单词原形（lemma），供 LLM 生成对话和 lemma_index 构建使用                                                                                   |
 | meaning            | 当前学习义项                                                                                                                                    |
-| chapter_first_seen | 首次出现章节                                                                                                                                    |
-| history_window     | 最近 5 次隐式阅读反馈，1 = 顺畅滑过（未点击释义），0 = 点击查看释义。由 Mastery Evaluator 滚动更新，用于计算喂给 FSRS 的加权评分。上传初始化可为短窗口（如 `[0]`），评分前由 Evaluator 用 `1` 补齐到 5 位。 |
+| chapter_first_seen | 首次出现章节；上传初始化为 `null`，若后续明确首次出现章节则回填为 `>= 1` 的整数                                                                 |
+| history_window     | 最近 5 次隐式阅读反馈，1 = 顺畅滑过（未点击释义），0 = 点击查看释义。由 Mastery Evaluator 滚动更新，用于计算喂给 FSRS 的加权评分。新上传词表初始化为 `[1, 1, 1, 1, 1]`；Evaluator 仍兼容历史短窗口，并会在评分前用 `1` 补齐到 5 位。 |
 
 
 ---
@@ -449,8 +449,9 @@ UserVocabulary.json
 
 ### 功能
 + 词表读取
-+ 查 WordSenseDB
-+ 多义词拆分
++ 用户显式提供 `meaning` 时，保留用户释义并按 `(word, meaning)` 去重生成学习对象
++ 缺少 `meaning` 时，查 WordSenseDB 补全释义并拆分多义词
++ WordSenseDB 只作为辅助词义库；若其某个 sense 合并了多个中文释义，也不能覆盖或合并用户上传的不同释义
 + 建立学习项
 + 初始化学习状态
 
@@ -509,7 +510,7 @@ ArcPlan.json（上一个 Arc，用于读取 pending_words）
 - `due_review_pool`：`last_review is not null` 且 `due <= now`
 - 没有 MASTERED 状态——词汇生命周期完全由 FSRS due 字段管理，due 未到的词本轮跳过。
 - `pending_words` 作为优先级 overlay：pending 词排在各自池的最前面。
-- unseen_pool 排序：pending 优先 → `chapter_first_seen` 升序。
+- unseen_pool 排序：pending 优先 → `chapter_first_seen` 升序；`null` 排在已知章节之后。
 - due_review_pool 排序：pending 优先 → `fsrs_card.due` 升序。
 
 **第二步：场景适配评分**
@@ -527,7 +528,7 @@ ArcPlan.json（上一个 Arc，用于读取 pending_words）
 - main episode：新词上限 10，复习词上限 10。pending 词不强塞，按 final_score 自然竞争。
 - side episode：新词上限 10，复习词上限 10。pending 词优先填满，剩余槽位再按 final_score 补充。
 - 冷启动降级：review 词不够时全用新词填满，候选不足时不报错。
-- Arc 内去重：同一 item_id 在整个 Arc 内只能 is_new=true 一次。
+- Arc 内复现：同一 item_id 在整个 Arc 内只能 `is_new=true` 一次；被引入过的新词会进入本 Arc 复现池，后续 episode 可继续以 `is_new=false` 进入 `target_words`，避免小词表只在第一集出现。
 
 **职责边界**
 - 不调用 ECDICT
@@ -555,7 +556,7 @@ Story Rewriter 不再只考虑当前集。
 
 + target_words
 + episode_type
-+ **输出文本中的词汇均为表层形式**（屈折形态，如 `"consuming"` / `"went"` / `"ran"`）。Rewriter 不做 lemma 归一化，但必须在结构化输出中报告成功嵌入词的 `{item_id, surface}`；Annotator 优先用 surface 定位，只有缺 surface 时才用 ECDICT 兜底。
++ **输出文本中的词汇均为表层形式**（屈折形态，如 `"consuming"` / `"went"` / `"ran"`）。Rewriter 不做 lemma 归一化，但必须在结构化输出中报告成功嵌入词的 `{item_id, surface}`；`target_words_used` 必须按目标词在生成文本中的首次出现顺序返回，尤其是多个义项共享同一 surface（如 `bank`）时。Annotator 优先用 surface 定位，只有缺 surface 时才用 ECDICT 兜底。
 
 ---
 
@@ -575,14 +576,16 @@ vocab[]
 + 是否显示释义
 + 标记词汇位置
 
-### 用 last_review == null 判断 is_new
+### 用 Scheduler 的显式 is_new 与 last_review 判断 is_new
 Vocabulary Annotator 在处理一集的 messages 时，维护一个集内临时已见集合：
 
 ```python
 shown_in_this_episode = set()  # 存 item_id
 
 for each word occurrence:
-    if fsrs_card.last_review == null and item_id not in shown_in_this_episode:
+    if target_word.is_new is False:
+        is_new = False
+    elif fsrs_card.last_review == null and item_id not in shown_in_this_episode:
         is_new = True
         shown_in_this_episode.add(item_id)
     else:
@@ -606,13 +609,18 @@ Rewriter 的输出是纯叙事文本，**不包含 lemma 标注**（marks 留空
 第二步：Vocabulary Annotator 接收 Rewriter 输出的 messages 后
 优先使用 `target_words_used[].surface` 在文本中定位表层词，再用 `item_id → VocabularyItem` 取得释义与 FSRS 状态。仅当 rewriter 没有返回 surface 时，才通过 ECDICT 对文本 token 做 lemma 兜底定位。
 
+若多个 `target_words_used` 共享同一 surface，Annotator 不会把每个义项都贴到所有同名 token 上；它按 Rewriter 返回顺序为每个 item_id 消费一个尚未被同 surface 目标占用的 token index。因此 `target_words_used` 的顺序是同形多义词定位的内部约定，学习对象身份仍由 `item_id` 决定。
+
 ```python
 item_id = "consume_1"          # Rewriter 返回
 surface_form = "consumed"      # Rewriter 返回的表层形式，填入 marks.word
 item = vocab_index["consume_1"]
 
-# 用 item.fsrs_card.last_review + 集内 shown_set 判断 is_new
-is_new = (item["state"] == "UNSEEN") and ("consume_1" not in shown_in_this_episode)
+# Scheduler 显式传入 is_new=false 时优先作为复现词处理；否则再用
+# item.fsrs_card.last_review + 集内 shown_set 判断首次展示
+is_new = target_word["is_new"] and item["fsrs_card"]["last_review"] is None and (
+    "consume_1" not in shown_in_this_episode
+)
 
 # 写入 marks
 mark = {
@@ -629,6 +637,7 @@ mark = {
 ### 一词多义处理
 同一 lemma 可能对应多个 item_id（如 `bank` → `bank_river` 河岸 / `bank_finance` 银行）。
 主链路中不再由 Annotator/ReadingTracker 根据 `(lemma, meaning)` 二次猜 item_id；Scheduler 选出的目标词、Rewriter 返回的 `target_words_used`、Episode `marks`、Reading Log 都必须携带同一个 `item_id`。
+当两个 item_id 使用相同 surface 时，Rewriter 返回顺序必须对应文本出现顺序；Annotator 用该顺序分配不同 token 位置，避免同一 `marks.index` 同时出现两个释义。
 
 ```python
 vocab_index = {item["id"]: item for item in user_vocab["vocabulary"]}
@@ -798,7 +807,7 @@ fsrs_card["last_review"] = datetime.now(timezone.utc).isoformat()
 ### 注意事项
 - **不调用 LLM**：本模块纯计算，不依赖外部 API
 - **不删除词汇**：即使稳定度极高，词汇**永久保留**在 UserVocabulary 中，前端可选择性展示
-- **`history_window` 初始值**：上传初始化可为 `[0]`，但 Evaluator 在首次评分前会把未满 5 位的窗口用 `1` 填充（视为"认可"），后续逐步被真实数据替换
+- **`history_window` 初始值**：新上传词表初始化为 `[1, 1, 1, 1, 1]`。Evaluator 仍兼容旧数据中的短窗口，并会在首次评分前把未满 5 位的窗口用 `1` 填充（视为"认可"），后续逐步被真实数据替换
 - **`elapsed_days` 计算**：FSRS 库需要知道距离上一次复习过了几天；`review_card()` 内部会自动根据 `last_review` 和当前时间推算，调用方通常无需手动计算
 - **`VocabularyScheduler` 互斥**：Scheduler 只负责"选词出题"，MasteryEvaluator 只负责"收到反馈后更新卡片"——两个模块**只读/只写 fsrs_card 的不同字段**，避免冲突
 

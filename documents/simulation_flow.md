@@ -153,8 +153,8 @@ Router: upload_vocabulary()
       "id": "awkward_1",
       "word": "awkward",
       "meaning": "尴尬的",
-      "chapter_first_seen": 1,
-      "history_window": [0],
+      "chapter_first_seen": null,
+      "history_window": [1, 1, 1, 1, 1],
       "fsrs_card": {
         "card_id": 1717243200000,
         "state": 1,

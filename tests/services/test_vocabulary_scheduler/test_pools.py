@@ -28,7 +28,7 @@ def _make_item(
     item_id: str,
     word: str = "test",
     meaning: str = "测试",
-    chapter_first_seen: int = 1,
+    chapter_first_seen: int | None = 1,
     last_review: str | None = None,
     due: str = "2026-06-01T00:00:00Z",
 ) -> VocabularyItem:
@@ -281,6 +281,21 @@ def test_apply_pending_sort_unseen_by_chapter():
 
     order = [item.id for item in unseen]
     assert order == ["ch1", "ch2", "ch3"], f"Got order: {order}"
+
+
+def test_apply_pending_sort_unseen_unknown_chapter_last():
+    """Unseen items with chapter_first_seen=None sort after known chapters."""
+    items = [
+        _make_item("unknown", chapter_first_seen=None),
+        _make_item("ch2", chapter_first_seen=2),
+        _make_item("ch1", chapter_first_seen=1),
+    ]
+    pools = (list(items), [])
+    pending: list[dict] = []
+    unseen, _ = apply_pending_overlay(pools, pending)
+
+    order = [item.id for item in unseen]
+    assert order == ["ch1", "ch2", "unknown"], f"Got order: {order}"
 
 
 def test_apply_pending_sort_due_by_date():

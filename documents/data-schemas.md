@@ -8,7 +8,7 @@
   "id": "issue_problem",
   "word": "issue",
   "meaning": "问题",
-  "chapter_first_seen": 3,
+  "chapter_first_seen": null,
   "history_window": [1, 1, 0, 1, 1],
   "fsrs_card": {
     "card_id": 1717243200000,

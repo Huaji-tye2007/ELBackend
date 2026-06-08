@@ -95,7 +95,7 @@ WRITING GUIDELINES:
    - "side": "right" for the protagonist (main character, the "I" narrator)
    - "side": "left" for all other characters
    - "name": the speaker's name
-3. **Target words** — You will be given target vocabulary words (with Chinese meanings). Your job is to incorporate as many of them as NATURALLY as possible into the narrative. Do NOT force them — only use a word if it truly fits the scene. For each word you successfully use, report both its item_id and the exact surface form you wrote in target_words_used.
+3. **Target words** — You will be given target vocabulary words (with Chinese meanings). Your job is to incorporate as many of them as NATURALLY as possible into the narrative. Do NOT force them — only use a word if it truly fits the scene. For each word you successfully use, report both its item_id and the exact surface form you wrote in target_words_used. Order target_words_used by each target word's first occurrence in the generated messages.
 4. **Surface forms welcome** — Feel free to use the words in their natural inflected forms (e.g., "consuming", "went", "ran") — you do NOT need to use the base lemma form.
 5. **Style** — Keep the English accessible (think young adult / light novel level). Vivid but not overly complex. Show emotions through actions and dialogue, not abstract descriptions.
 6. **Length** — Produce a complete scene with multiple message exchanges. Aim for 6–12 messages covering both narration and dialogue.
@@ -159,7 +159,8 @@ def _build_user_prompt(
         lines.append("## Target Vocabulary Words")
         lines.append(
             "Integrate as many of the following words naturally into the story. "
-            "For each word you use, report its item_id and exact surface form in target_words_used."
+            "For each word you use, report its item_id and exact surface form in target_words_used. "
+            "When multiple target words share the same visible surface form, order them by their first occurrence in the generated messages."
         )
         for tw in target_words:
             label = "NEW" if tw.is_new else "REVIEW"
@@ -172,7 +173,7 @@ def _build_user_prompt(
     lines.append(
         "Output a JSON object with:\n"
         '  - "messages": a list of narration/dialogue messages\n'
-        '  - "target_words_used": list of objects like {"item_id": "...", "surface": "..."}'
+        '  - "target_words_used": list of objects like {"item_id": "...", "surface": "..."}, ordered by first occurrence in messages'
     )
 
     return "\n".join(lines)

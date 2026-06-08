@@ -182,6 +182,18 @@ class TestBuildUserPrompt:
         assert "a" in prompt
         assert "b" in prompt
 
+    def test_target_words_used_order_instruction(self):
+        """Prompt tells the LLM to report used targets in text order."""
+        tws = [
+            _make_target_word(item_id="bank_river", word="bank", meaning="河岸"),
+            _make_target_word(item_id="bank_money", word="bank", meaning="银行"),
+        ]
+
+        prompt = _build_user_prompt("text", tws)
+
+        assert "first occurrence" in prompt
+        assert "same visible surface form" in prompt
+
 
 # ---------------------------------------------------------------------------
 # StoryRewriter.rewrite_episode — happy path

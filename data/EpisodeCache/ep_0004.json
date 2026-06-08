@@ -1,0 +1,177 @@
+{
+  "meta": {
+    "ep": 4,
+    "title": "Episode 4",
+    "kind": "main"
+  },
+  "messages": [
+    {
+      "type": "narration",
+      "text": "I had discovered this hidden corner of the library on my second day at school, and ever since, it had become my sanctuary. The wooden floors creaked in familiar places, and the shelves rose around me like ancient guardians. I sat at the farthest reading table, a book about Showa-era poetry open in front of me, though I wasn't really reading it. Holding the book made me feel less conspicuous—a shield against the world. I wanted to be invisible, a ghost among the stacks.",
+      "marks": [
+        {
+          "item_id": "invisible_f681be07",
+          "word": "invisible",
+          "index": 78,
+          "definition": "隐形的",
+          "is_new": false
+        }
+      ]
+    },
+    {
+      "type": "narration",
+      "text": "The library doors creaked open, and light footsteps approached—feminine and deliberate. I didn't look up. The footsteps stopped across from me, and a chair scraped against the floor. I finally raised my eyes to find Mei sitting there, her gaze fixed on an old leather-bound book.",
+      "marks": []
+    },
+    {
+      "type": "dialogue",
+      "side": "left",
+      "name": "Mei",
+      "text": "You come here every day.",
+      "marks": []
+    },
+    {
+      "type": "dialogue",
+      "side": "right",
+      "name": "Me",
+      "text": "So do you.",
+      "marks": []
+    },
+    {
+      "type": "narration",
+      "text": "She turned a page with careful fingers. An awkward silence settled between us, punctuated only by the ticking of the grandfather clock.",
+      "marks": [
+        {
+          "item_id": "awkward_8a609961",
+          "word": "awkward",
+          "index": 8,
+          "definition": "尴尬的",
+          "is_new": false
+        }
+      ]
+    },
+    {
+      "type": "dialogue",
+      "side": "left",
+      "name": "Mei",
+      "text": "You're not reading that book. You've been on the same page for twenty minutes. You're hiding behind it.",
+      "marks": []
+    },
+    {
+      "type": "narration",
+      "text": "I felt heat rise to my cheeks. Being caught in the act of hiding was embarrassing. I struggled to find a reply.",
+      "marks": []
+    },
+    {
+      "type": "dialogue",
+      "side": "right",
+      "name": "Me",
+      "text": "It's more interesting than it looks.",
+      "marks": []
+    },
+    {
+      "type": "narration",
+      "text": "She looked up, her eyes meeting mine with an intensity that made me want to look away. But I didn't.",
+      "marks": []
+    },
+    {
+      "type": "dialogue",
+      "side": "left",
+      "name": "Mei",
+      "text": "You're a terrible liar.",
+      "marks": []
+    },
+    {
+      "type": "narration",
+      "text": "A small smile curved her lips, transforming her face. She closed her book and set it on the table.",
+      "marks": []
+    },
+    {
+      "type": "dialogue",
+      "side": "left",
+      "name": "Mei",
+      "text": "My grandmother gave me this book. She said it contains all the answers I'll ever need. But I've read it twice and still don't understand half of it.",
+      "marks": []
+    },
+    {
+      "type": "narration",
+      "text": "I glanced at the window behind her. Through the glass, I could see the bank of the river that ran behind the school, its surface glittering in the afternoon light. It reminded me of the money I had saved in my bank account for emergencies—not that I'd ever needed it. This moment felt like a kind of emergency too, but the kind where answers were hidden, not spent.",
+      "marks": [
+        {
+          "item_id": "bank_105e10d9",
+          "word": "bank",
+          "index": 14,
+          "definition": "河岸",
+          "is_new": false
+        },
+        {
+          "item_id": "bank_cb8a39d9",
+          "word": "bank",
+          "index": 14,
+          "definition": "银行",
+          "is_new": false
+        },
+        {
+          "item_id": "bank_105e10d9",
+          "word": "bank",
+          "index": 41,
+          "definition": "河岸",
+          "is_new": false
+        },
+        {
+          "item_id": "bank_cb8a39d9",
+          "word": "bank",
+          "index": 41,
+          "definition": "银行",
+          "is_new": false
+        }
+      ]
+    },
+    {
+      "type": "dialogue",
+      "side": "right",
+      "name": "Me",
+      "text": "Maybe the answers aren't written. Maybe they're in the quiet moments.",
+      "marks": []
+    },
+    {
+      "type": "narration",
+      "text": "Mei looked at me, her eyes searching. Then she nodded slowly, and for the first time, I felt like I wasn't invisible anymore.",
+      "marks": [
+        {
+          "item_id": "invisible_f681be07",
+          "word": "invisible",
+          "index": 21,
+          "definition": "隐形的",
+          "is_new": false
+        }
+      ]
+    }
+  ],
+  "vocab": [
+    {
+      "item_id": "invisible_f681be07",
+      "word": "invisible",
+      "definition": "隐形的",
+      "is_new": false
+    },
+    {
+      "item_id": "awkward_8a609961",
+      "word": "awkward",
+      "definition": "尴尬的",
+      "is_new": false
+    },
+    {
+      "item_id": "bank_105e10d9",
+      "word": "bank",
+      "definition": "河岸",
+      "is_new": false
+    },
+    {
+      "item_id": "bank_cb8a39d9",
+      "word": "bank",
+      "definition": "银行",
+      "is_new": false
+    }
+  ]
+}

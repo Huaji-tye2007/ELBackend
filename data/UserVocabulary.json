@@ -1,0 +1,115 @@
+{
+  "user_id": "demo_user",
+  "vocabulary": [
+    {
+      "id": "consume_c77f5c7a",
+      "word": "consume",
+      "meaning": "消耗",
+      "chapter_first_seen": 1,
+      "history_window": [
+        1,
+        1,
+        0,
+        0,
+        0
+      ],
+      "fsrs_card": {
+        "card_id": 1780894998957,
+        "state": 1,
+        "step": 0,
+        "stability": 0.1688774512073012,
+        "difficulty": 9.452295771609876,
+        "due": "2026-06-09T00:00:00+00:00",
+        "last_review": "2026-06-08T05:16:04.773820+00:00"
+      }
+    },
+    {
+      "id": "invisible_f681be07",
+      "word": "invisible",
+      "meaning": "隐形的",
+      "chapter_first_seen": 1,
+      "history_window": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "fsrs_card": {
+        "card_id": 1780894998957,
+        "state": 1,
+        "step": null,
+        "stability": null,
+        "difficulty": null,
+        "due": "2026-06-08T05:03:18.957258+00:00",
+        "last_review": null
+      }
+    },
+    {
+      "id": "awkward_8a609961",
+      "word": "awkward",
+      "meaning": "尴尬的",
+      "chapter_first_seen": 1,
+      "history_window": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "fsrs_card": {
+        "card_id": 1780894998957,
+        "state": 1,
+        "step": null,
+        "stability": null,
+        "difficulty": null,
+        "due": "2026-06-08T05:03:18.957258+00:00",
+        "last_review": null
+      }
+    },
+    {
+      "id": "bank_105e10d9",
+      "word": "bank",
+      "meaning": "河岸",
+      "chapter_first_seen": 1,
+      "history_window": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "fsrs_card": {
+        "card_id": 1780894998957,
+        "state": 1,
+        "step": null,
+        "stability": null,
+        "difficulty": null,
+        "due": "2026-06-08T05:03:18.957258+00:00",
+        "last_review": null
+      }
+    },
+    {
+      "id": "bank_cb8a39d9",
+      "word": "bank",
+      "meaning": "银行",
+      "chapter_first_seen": 1,
+      "history_window": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "fsrs_card": {
+        "card_id": 1780894998957,
+        "state": 1,
+        "step": null,
+        "stability": null,
+        "difficulty": null,
+        "due": "2026-06-08T05:03:18.957258+00:00",
+        "last_review": null
+      }
+    }
+  ]
+}

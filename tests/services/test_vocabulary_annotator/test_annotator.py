@@ -205,6 +205,28 @@ class TestIsNew:
 
         assert result[0].marks[0].is_new is False
 
+    def test_is_new_false_when_scheduler_marks_repeat(
+        self, annotator: VocabularyAnnotator
+    ) -> None:
+        """Scheduler can force a same-arc repeat to render as not new."""
+        msg = NarrationMessage(type="narration", text="He was consuming food.")
+        target_words = [
+            {
+                "lemma": "consume",
+                "meaning": "消费",
+                "item_id": "consume_v1",
+                "is_new": False,
+            }
+        ]
+
+        result = annotator.annotate(
+            messages=[msg],
+            target_words=target_words,
+            shown_set=set(),
+        )
+
+        assert result[0].marks[0].is_new is False
+
     def test_shown_set_mutated(self, annotator: VocabularyAnnotator) -> None:
         """shown_set should be mutated when is_new=True is determined."""
         msg = NarrationMessage(type="narration", text="He was consuming food.")
@@ -291,6 +313,53 @@ class TestSurfaceFormPreserved:
         assert mark.item_id == "consume_v1"
         assert mark.word == "ate"
         assert mark.index == 1
+
+    def test_same_surface_polysemy_consumes_distinct_positions(
+        self, ecdict_db: sqlite3.Connection
+    ) -> None:
+        """Two meanings of the same word must not mark the same token index."""
+        uv = UserVocabulary(
+            user_id="test",
+            vocabulary=[
+                _make_vocab_item("bank_river", "bank", "河岸", last_review=None),
+                _make_vocab_item("bank_money", "bank", "银行", last_review=None),
+            ],
+        )
+        ann = VocabularyAnnotator(user_vocab=uv, ecdict_db=ecdict_db)
+        msg = NarrationMessage(
+            type="narration",
+            text=(
+                "I sat by the river bank and later put money in the bank."
+            ),
+        )
+        target_words = [
+            {
+                "item_id": "bank_river",
+                "word": "bank",
+                "meaning": "河岸",
+                "surface": "bank",
+                "is_new": True,
+            },
+            {
+                "item_id": "bank_money",
+                "word": "bank",
+                "meaning": "银行",
+                "surface": "bank",
+                "is_new": True,
+            },
+        ]
+
+        result = ann.annotate(
+            messages=[msg],
+            target_words=target_words,
+            shown_set=set(),
+        )
+
+        marks = result[0].marks
+        assert [(m.item_id, m.index) for m in marks] == [
+            ("bank_river", 5),
+            ("bank_money", 12),
+        ]
 
 
 class TestDialogueMessage:

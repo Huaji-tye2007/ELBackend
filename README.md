@@ -134,7 +134,7 @@ curl.exe http://127.0.0.1:8000/api/v1/health
 - `marks[].is_new = true`：建议内联展示释义，例如 `consumed（消耗）`
 - `marks[].is_new = false`：建议只加粗，点击时再查词
 
-注意：后端更新学习状态时优先使用 `item_id`；`marks[].word` 始终是文本中的表层形式。前端可以继续使用既有 lemma 逻辑。
+注意：后端更新学习状态时优先使用 `item_id`；`marks[].word` 始终是文本中的表层形式。前端可以继续使用既有 lemma 逻辑。同形多义词（例如 `bank=河岸` / `bank=银行`）由后端按 `item_id` 区分并分配到不同 token index，前端只需按返回的 `marks` 渲染。
 
 ## 5. API 详情
 
@@ -146,24 +146,24 @@ curl.exe http://127.0.0.1:8000/api/v1/health
 { "detail": "error message" }
 ```
 
-| Method | Path | Body | 200/成功响应 | 常见错误 |
-| --- | --- | --- | --- | --- |
-| GET | `/api/v1/health` | 无 | `{ "status": "ok" }` | - |
-| POST | `/api/v1/vocabulary/upload` | `{user_id, items:[{word, meaning}]}` | `{ "count": number }` | `400` 词表非法；`500` 保存/预处理失败 |
-| GET | `/api/v1/vocabulary` | 无 | `UserVocabulary` | `500` 读取失败 |
-| GET | `/api/v1/vocabulary/{item_id}` | 无 | `VocabularyItem` | `404` item 不存在；`500` 读取失败 |
-| POST | `/api/v1/novel/upload` | `{title, raw_text}` | `{ "chapter_count": number }` | `422` 请求体校验失败 |
-| GET | `/api/v1/novel/chapters` | 无 | `Chapter[]` 摘要列表 | - |
-| GET | `/api/v1/novel/chapters/{chapter_id}` | 无 | `Chapter` | `404` 未上传小说或章节不存在 |
-| POST | `/api/v1/arc/generate` | `{ "arc_id"?: string }` | `{ "job_id": string, "status": "queued" }` | `400` 无章节；`404` 未上传小说；`409` 已有任务运行 |
-| GET | `/api/v1/arc/status` | 无 | `ArcGenerationState` | - |
-| GET | `/api/v1/episode/cache/status` | 无 | `{cached_count, latest_episode_id}` | - |
-| GET | `/api/v1/episode/{episode_id}` | 无 | `Episode` | `404` Episode 尚未生成 |
-| GET | `/api/v1/dictionary/{word}` | 无 | `{word, meaning, examples?}` | `404` 查不到词；`503` ECDICT 不可用 |
-| POST | `/api/v1/reading/log` | `{episode_id, word_logs:[{item_id, appeared, clicked}]}` | `{ "updated": true }` | `400` 点击数非法；`422` 缺少/空 `item_id` 或请求体校验失败 |
-| POST | `/api/v1/reading/finish` | `{ "episode_id": number }` | `{ "vocab_updated_count": number }` | `404` 无阅读日志或无词表 |
-| GET | `/api/v1/progress` | 无 | `ReadingProgress` | - |
-| GET | `/api/v1/reading/progress` | 无 | `ReadingProgress` | - |
+| Method | Path                                  | Body                                                     | 200/成功响应                               | 常见错误                                                   |
+| ------ | ------------------------------------- | -------------------------------------------------------- | ------------------------------------------ | ---------------------------------------------------------- |
+| GET    | `/api/v1/health`                      | 无                                                       | `{ "status": "ok" }`                       | -                                                          |
+| POST   | `/api/v1/vocabulary/upload`           | `{user_id, items:[{word, meaning}]}`                     | `{ "count": number }`                      | `400` 词表非法；`500` 保存/预处理失败                      |
+| GET    | `/api/v1/vocabulary`                  | 无                                                       | `UserVocabulary`                           | `500` 读取失败                                             |
+| GET    | `/api/v1/vocabulary/{item_id}`        | 无                                                       | `VocabularyItem`                           | `404` item 不存在；`500` 读取失败                          |
+| POST   | `/api/v1/novel/upload`                | `{title, raw_text}`                                      | `{ "chapter_count": number }`              | `422` 请求体校验失败                                       |
+| GET    | `/api/v1/novel/chapters`              | 无                                                       | `Chapter[]` 摘要列表                       | -                                                          |
+| GET    | `/api/v1/novel/chapters/{chapter_id}` | 无                                                       | `Chapter`                                  | `404` 未上传小说或章节不存在                               |
+| POST   | `/api/v1/arc/generate`                | `{ "arc_id"?: string }`                                  | `{ "job_id": string, "status": "queued" }` | `400` 无章节；`404` 未上传小说；`409` 已有任务运行         |
+| GET    | `/api/v1/arc/status`                  | 无                                                       | `ArcGenerationState`                       | -                                                          |
+| GET    | `/api/v1/episode/cache/status`        | 无                                                       | `{cached_count, latest_episode_id}`        | -                                                          |
+| GET    | `/api/v1/episode/{episode_id}`        | 无                                                       | `Episode`                                  | `404` Episode 尚未生成                                     |
+| GET    | `/api/v1/dictionary/{word}`           | 无                                                       | `{word, meaning, examples?}`               | `404` 查不到词；`503` ECDICT 不可用                        |
+| POST   | `/api/v1/reading/log`                 | `{episode_id, word_logs:[{item_id, appeared, clicked}]}` | `{ "updated": true }`                      | `400` 点击数非法；`422` 缺少/空 `item_id` 或请求体校验失败 |
+| POST   | `/api/v1/reading/finish`              | `{ "episode_id": number }`                               | `{ "vocab_updated_count": number }`        | `404` 无阅读日志或无词表                                   |
+| GET    | `/api/v1/progress`                    | 无                                                       | `ReadingProgress`                          | -                                                          |
+| GET    | `/api/v1/reading/progress`            | 无                                                       | `ReadingProgress`                          | -                                                          |
 
 ### 5.1 上传词表
 
@@ -529,14 +529,19 @@ Invoke-RestMethod "http://127.0.0.1:8000/api/v1/episode/1"
 
 ### 6.7 上报阅读日志
 
-如果第 1 集里出现了 `consumed` 和 `awkward`，可以模拟：
+如果第 1 集里出现了`awkward` 和 `consume`，可以模拟：
 
 ```powershell
 $log = @{
   episode_id = 1
   word_logs = @(
     @{
-      item_id = "awkward_1"
+      item_id = "awkward_8a60996"
+      appeared = 1
+      clicked = 1
+    },
+    @{
+      item_id = "consume_c77f5c7a"
       appeared = 1
       clicked = 1
     }
@@ -565,7 +570,7 @@ Invoke-RestMethod `
 期望：
 
 ```json
-{ "vocab_updated_count": 1 }
+{ "vocab_updated_count": 2 }
 ```
 
 ### 6.9 查询进度
@@ -889,13 +894,13 @@ mark.item_id
 
 常见错误：
 
-| HTTP | 场景                        | 前端建议                            |
-| ---- | --------------------------- | ----------------------------------- |
-| 400  | 阅读日志计数非法，例如 `clicked > appeared` | 检查出现/点击统计 |
-| 422  | 阅读日志缺少或传入空 `item_id` | 检查是否回传了 `marks[].item_id` |
-| 404  | 词表、章节或 episode 不存在 | 引导重新上传或等待生成完成          |
-| 409  | Arc 正在生成                | 继续轮询 `/arc/status`              |
-| 503  | ECDICT 不可用               | 提示词典资源缺失                    |
+| HTTP | 场景                                        | 前端建议                         |
+| ---- | ------------------------------------------- | -------------------------------- |
+| 400  | 阅读日志计数非法，例如 `clicked > appeared` | 检查出现/点击统计                |
+| 422  | 阅读日志缺少或传入空 `item_id`              | 检查是否回传了 `marks[].item_id` |
+| 404  | 词表、章节或 episode 不存在                 | 引导重新上传或等待生成完成       |
+| 409  | Arc 正在生成                                | 继续轮询 `/arc/status`           |
+| 503  | ECDICT 不可用                               | 提示词典资源缺失                 |
 
 ## 8. 开发者快速检查清单
 

@@ -76,9 +76,11 @@ class VocabularyAnnotator:
             Messages without text are returned unchanged.
         """
         annotated: list[NarrationMessage | DialogueMessage] = []
+        target_key_counts = _count_target_keys(target_words)
 
         for msg in messages:
             marks: list[Mark] = []
+            claimed_indices_by_key: dict[tuple[str, str], set[int]] = {}
 
             surface_tokens = _tokenize_surface(msg.text)
             token_data: list[tuple[str, str, int]] | None = None
@@ -87,6 +89,8 @@ class VocabularyAnnotator:
                 item_id: str = tw["item_id"]
                 target_surface: str | None = tw.get("surface")
                 target_lemma: str = tw.get("lemma") or tw.get("word") or tw["item_id"]
+                target_is_new: bool | None = tw.get("is_new")
+                target_key = _target_match_key(tw)
 
                 item: VocabularyItem | None = self.user_vocab.vocab_index.get(item_id)
                 if item is None:
@@ -110,11 +114,27 @@ class VocabularyAnnotator:
 
                 if not matching:
                     continue
+                if target_key_counts.get(target_key, 0) > 1:
+                    claimed_indices = claimed_indices_by_key.setdefault(
+                        target_key, set()
+                    )
+                    matching = [
+                        (cleaned, idx)
+                        for cleaned, idx in matching
+                        if idx not in claimed_indices
+                    ][:1]
+                    claimed_indices.update(idx for _cleaned, idx in matching)
+                if not matching:
+                    continue
 
                 first_new = True
                 for cleaned, idx in matching:
                     is_new: bool = (
-                        _compute_is_new(item=item, shown_set=shown_set)
+                        _compute_is_new(
+                            item=item,
+                            shown_set=shown_set,
+                            target_is_new=target_is_new,
+                        )
                         if first_new
                         else False
                     )
@@ -193,6 +213,34 @@ def _normalize_surface(surface: str) -> str:
     return surface.strip("".join(_SURFACE_PUNCTUATION)).lower()
 
 
+def _target_match_key(target_word: dict) -> tuple[str, str]:
+    """Build the matching key used to detect same-surface polysemy.
+
+    Multiple target words can share the same visible token, e.g. bank=河岸
+    and bank=银行. Without a precise LLM-provided position, those targets
+    must consume distinct token positions rather than all matching every
+    occurrence.
+    """
+    target_surface = target_word.get("surface")
+    if target_surface:
+        return ("surface", _normalize_surface(target_surface))
+    target_lemma = (
+        target_word.get("lemma")
+        or target_word.get("word")
+        or target_word.get("item_id")
+        or ""
+    )
+    return ("lemma", str(target_lemma).lower())
+
+
+def _count_target_keys(target_words: list[dict]) -> dict[tuple[str, str], int]:
+    counts: dict[tuple[str, str], int] = {}
+    for target_word in target_words:
+        key = _target_match_key(target_word)
+        counts[key] = counts.get(key, 0) + 1
+    return counts
+
+
 def _resolve_lemma(word: str, db: sqlite3.Connection) -> str:
     """Resolve a word to its base lemma, with case‑insensitive fallback.
 
@@ -220,6 +268,7 @@ def _resolve_lemma(word: str, db: sqlite3.Connection) -> str:
 def _compute_is_new(
     item: VocabularyItem,
     shown_set: set[str],
+    target_is_new: bool | None = None,
 ) -> bool:
     """Determine whether this (word, meaning) pair is new in the episode.
 
@@ -238,6 +287,8 @@ def _compute_is_new(
     Returns:
         ``True`` if this is the first new occurrence in the episode.
     """
+    if target_is_new is False:
+        return False
     if item.id in shown_set:
         return False
     if item.fsrs_card.last_review is not None:

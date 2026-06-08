@@ -49,7 +49,7 @@ def apply_pending_overlay(
     Pending items are moved to the front of their respective pools, preserving
     the order they appear in pending_words. After the overlay, non-pending items
     are sorted:
-      - unseen_pool: by chapter_first_seen ascending
+      - unseen_pool: by chapter_first_seen ascending; unknown chapters last
       - due_review_pool: by fsrs_card.due ascending
 
     If a pending item_id does not exist in the pool, it is silently ignored.
@@ -71,7 +71,7 @@ def apply_pending_overlay(
         unseen_pool,
         pending_order,
         pending_ids,
-        sort_key=lambda item: item.chapter_first_seen,
+        sort_key=_chapter_first_seen_sort_key,
     )
     due_review_pool = _reorder_pool(
         due_review_pool,
@@ -115,3 +115,7 @@ def _reorder_pool(
     non_pending_items.sort(key=sort_key)
 
     return pending_items + non_pending_items
+
+
+def _chapter_first_seen_sort_key(item: VocabularyItem) -> int:
+    return item.chapter_first_seen if item.chapter_first_seen is not None else 10**9

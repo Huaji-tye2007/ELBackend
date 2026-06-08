@@ -846,8 +846,13 @@ class TestScheduleEdgeCases:
         }
         result = await schedule(arc, tiny_vocab, now)
         assert len(result["episodes"][0]["target_words"]) <= 10
+        assert result["episodes"][0]["target_words"][0]["is_new"] is True
         for ep in result["episodes"][1:]:
-            assert isinstance(ep.get("target_words"), list)
+            targets = ep.get("target_words")
+            assert isinstance(targets, list)
+            assert len(targets) == 1
+            assert targets[0]["item_id"] == "only_word"
+            assert targets[0]["is_new"] is False
 
     async def test_large_episode_limit(
         self, arc_plan: dict[str, Any], user_vocab: dict[str, Any], now: datetime

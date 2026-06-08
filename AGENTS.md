@@ -42,14 +42,14 @@
 
 ## 5. 锁定的技术栈
 
-| 用途          | 选型                                                      | 现状                                                                |
-| ------------- | --------------------------------------------------------- | ------------------------------------------------------------------- |
-| Web 框架      | FastAPI + Uvicorn                                         | 已装 (`fastapi 0.136.3`, `uvicorn 0.48.0`)                          |
-| 数据模型      | Pydantic v2                                               | 已装 (`pydantic 2.13.4`)                                            |
-| FSRS 调度     | **`fsrs`**（PyPI 包名是 `fsrs`，**不是** `pyfsrs`）       | 已装 (`fsrs 6.3.1`)。`import fsrs`，`fsrs.Card(**fsrs_card)`        |
-| LLM 编排      | `instructor`                                              | 已装 (`instructor 1.15.1`)，结构化输出绑定 Pydantic                 |
-| 异步 Arc 生成 | `asyncio` + JSON checkpoint 状态机                        | 已落地。`ArcGenerationManager`（§14），MVP 阶段不引入外部消息队列   |
-| 词形还原      | **`asset/ecdict_mobile.db`**（SQLite，内置）              | **数据库文件目前不在仓库**，需要用户提供；查询路径见 §6             |
+| 用途          | 选型                                                | 现状                                                              |
+| ------------- | --------------------------------------------------- | ----------------------------------------------------------------- |
+| Web 框架      | FastAPI + Uvicorn                                   | 已装 (`fastapi 0.136.3`, `uvicorn 0.48.0`)                        |
+| 数据模型      | Pydantic v2                                         | 已装 (`pydantic 2.13.4`)                                          |
+| FSRS 调度     | **`fsrs`**（PyPI 包名是 `fsrs`，**不是** `pyfsrs`） | 已装 (`fsrs 6.3.1`)。`import fsrs`，`fsrs.Card(**fsrs_card)`      |
+| LLM 编排      | `instructor`                                        | 已装 (`instructor 1.15.1`)，结构化输出绑定 Pydantic               |
+| 异步 Arc 生成 | `asyncio` + JSON checkpoint 状态机                  | 已落地。`ArcGenerationManager`（§14），MVP 阶段不引入外部消息队列 |
+| 词形还原      | **`asset/ecdict_mobile.db`**（SQLite，内置）        | ，需要用户提供；查询路径见 §6                                     |
 
 不要擅自引入其他 ORM、迁移工具、消息队列。**严禁**引入 `nltk` / `spacy` / `pyinflect` / `lemminflect` 等 lemmatizer——词形还原走 ECDICT。
 
@@ -58,6 +58,8 @@
 ### 学习对象
 - **后端学习状态的唯一主键是 `item_id`**。追踪单位仍是用户词表里的一个 `VocabularyItem`（本质是一个词义学习对象），不是单词表层形式，也不再把 lemma 作为状态主键。
 - **多义词必须拆成多个 `item_id`**：`bank=河岸` 与 `bank=银行` 是两个独立 `VocabularyItem`，各有独立 FSRS card / history_window。
+- **用户上传词表是主数据源**：`POST /vocabulary/upload` 中显式提供的 `meaning` 必须原样保留，并按 `(word, meaning)` 去重/建学习对象。`WordSenseDB` 只作为辅助；若 DB 把多个义项合并在同一条释义中，也不能把用户上传的两条不同释义合并成一个 `item_id`。
+- **`history_window` 初始化**：新上传词表必须初始化为 `[1, 1, 1, 1, 1]`。Evaluator 仍兼容历史短窗口，但新数据不要再写 `[0]`。
 - **`is_new` 判定**：`fsrs_card.last_review == null` 且该 `item_id` 在本集尚未出现过。Annotator 需维护集内 `shown_in_this_episode: set[item_id]`。
 - **FSRS Card**：`fsrs_card` 内嵌对象与 `fsrs` 库的 `Card` 字段一一对应，可 `Card(**fsrs_card)` 还原。
 
@@ -72,14 +74,14 @@
 - **学习状态全部按 `item_id` 管理**（is_new、history_window、FSRS card），不按表层形式，也不按 lemma。
 - **item_id-first 全链路**：
   1. **VocabularyScheduler** 从 `UserVocabulary` 选出 `TargetWord(item_id, word, meaning, is_new)`。
-  2. **StoryRewriter** 按 `item_id` 使用目标词，并返回成功使用的 `target_words_used: list[{item_id, surface}]`，其中 `surface` 是生成文本里的精确表层形式。
-  3. **VocabularyAnnotator** 用 `target_words_used[].surface` 定位文本，用 `item_id → VocabularyItem` 取得 meaning / FSRS 状态后填 `marks.item_id`、`marks.word`、`marks.is_new`；仅当 rewriter 未返回 surface 时才用 ECDICT 做兜底定位。
+  2. **StoryRewriter** 按 `item_id` 使用目标词，并返回成功使用的 `target_words_used: list[{item_id, surface}]`，其中 `surface` 是生成文本里的精确表层形式；当多个目标词共享同一 surface（如 bank 的多个义项）时，必须按文本首次出现顺序返回。
+  3. **VocabularyAnnotator** 用 `item_id → VocabularyItem` 识别学习对象，用 `target_words_used[].surface` 定位文本后填 `marks.item_id`、`marks.word`、`marks.is_new`；同一 surface 对应多个 item_id 且没有精确位置字段时，按 `target_words_used` 顺序消费不同 token，避免同一 index 被多个义项重复标注；仅当 rewriter 未返回 surface 时才用 ECDICT 做兜底定位。
   4. **Frontend** 渲染时使用 `marks.word/index/definition/is_new`，可继续既有 lemma 逻辑；上报阅读日志时回传对应 `item_id`。
   5. **ReadingTracker / MasteryEvaluator** 直接按 `item_id` 记录行为并更新 FSRS card。
 - `vocab` 数组可由 `messages[].marks` 推导，写出来仅为方便前端；若由后端生成，应同步携带 `item_id`。
 
 ### 词形还原（ECDICT 方案，强制）
-- 唯一数据源：`asset/ecdict_mobile.db`（SQLite，**需用户提供**，目前不在仓库）。
+- 唯一数据源：`asset/ecdict_mobile.db`。
 - ECDICT 不再是学习状态主链路，只用于：
   - 词表上传预处理时辅助判断 headword/forms。
   - Annotator 在 rewriter 未返回明确 surface 时做表层词定位兜底。
@@ -229,23 +231,23 @@ ELBackend/
 
 所有端点 prefix `/api/v1`。V1.5 单用户，无鉴权（后续版本再加）。
 
-| Method | Path                           | Request                               | Response                              | 说明                                   |
-| ------ | ------------------------------ | ------------------------------------- | ------------------------------------- | -------------------------------------- |
-| POST   | `/vocabulary/upload`           | `{user_id, items: [{word, meaning}]}` | `{count: int}`                        | 上传词表，Vocabulary Preprocessor 处理 |
-| GET    | `/vocabulary`                  | –                                     | `UserVocabulary`                      | 查询全部词条（含 FSRS 卡）             |
-| GET    | `/vocabulary/{item_id}`        | –                                     | `VocabularyItem`                      | 单条查询                               |
-| POST   | `/novel/upload`                | `{title, raw_text}`                   | `{chapter_count: int}`                | 上传小说，Novel Preprocessor 切章      |
-| GET    | `/novel/chapters`              | –                                     | `[Chapter]`                           | 章节列表                               |
-| GET    | `/novel/chapters/{chapter_id}` | –                                     | `Chapter`                             | 单章详情                               |
-| GET    | `/episode/{episode_id}`        | –                                     | `Episode`（FormatSpec v3）            | 前端消费的剧集 JSON                    |
-| GET    | `/episode/cache/status`        | –                                     | `{cached_count, latest_episode_id}`   | Episode Cache 状态                     |
-| GET    | `/progress`                    | –                                     | `ReadingProgress`                     | 当前阅读进度                           |
+| Method | Path                           | Request                                                   | Response                              | 说明                                      |
+| ------ | ------------------------------ | --------------------------------------------------------- | ------------------------------------- | ----------------------------------------- |
+| POST   | `/vocabulary/upload`           | `{user_id, items: [{word, meaning}]}`                     | `{count: int}`                        | 上传词表，Vocabulary Preprocessor 处理    |
+| GET    | `/vocabulary`                  | –                                                         | `UserVocabulary`                      | 查询全部词条（含 FSRS 卡）                |
+| GET    | `/vocabulary/{item_id}`        | –                                                         | `VocabularyItem`                      | 单条查询                                  |
+| POST   | `/novel/upload`                | `{title, raw_text}`                                       | `{chapter_count: int}`                | 上传小说，Novel Preprocessor 切章         |
+| GET    | `/novel/chapters`              | –                                                         | `[Chapter]`                           | 章节列表                                  |
+| GET    | `/novel/chapters/{chapter_id}` | –                                                         | `Chapter`                             | 单章详情                                  |
+| GET    | `/episode/{episode_id}`        | –                                                         | `Episode`（FormatSpec v3）            | 前端消费的剧集 JSON                       |
+| GET    | `/episode/cache/status`        | –                                                         | `{cached_count, latest_episode_id}`   | Episode Cache 状态                        |
+| GET    | `/progress`                    | –                                                         | `ReadingProgress`                     | 当前阅读进度                              |
 | POST   | `/reading/log`                 | `{episode_id, word_logs: [{item_id, appeared, clicked}]}` | `{updated: bool}`                     | 上报阅读行为（点击/出现）；`item_id` 必填 |
-| POST   | `/reading/finish`              | `{episode_id}`                        | `{vocab_updated_count: int}`          | 完成一集，触发 Mastery Evaluator       |
-| GET    | `/dictionary/{word}`           | –                                     | `{word, meaning, examples?: []}`      | 查词（用于 marks 点击展开）            |
-| POST   | `/arc/generate`                | `{arc_id?: str}`                      | `{job_id, status: "queued"}` 或 `409` | 手动触发 Arc 生成（详见 §14）          |
-| GET    | `/arc/status`                  | –                                     | `ArcGenerationState`（见 §14）        | 前端轮询生成进度                       |
-| GET    | `/health`                      | –                                     | `{status: "ok"}`                      | 健康检查                               |
+| POST   | `/reading/finish`              | `{episode_id}`                                            | `{vocab_updated_count: int}`          | 完成一集，触发 Mastery Evaluator          |
+| GET    | `/dictionary/{word}`           | –                                                         | `{word, meaning, examples?: []}`      | 查词（用于 marks 点击展开）               |
+| POST   | `/arc/generate`                | `{arc_id?: str}`                                          | `{job_id, status: "queued"}` 或 `409` | 手动触发 Arc 生成（详见 §14）             |
+| GET    | `/arc/status`                  | –                                                         | `ArcGenerationState`（见 §14）        | 前端轮询生成进度                          |
+| GET    | `/health`                      | –                                                         | `{status: "ok"}`                      | 健康检查                                  |
 
 **`GET /api/v1/arc/status` 响应示例**：
 
@@ -267,17 +269,17 @@ ELBackend/
 
 ### 9 个业务模块（与 `documents/BACKEND_IN_OUT.md` §四一一对应）
 
-| #   | 类                       | 文件                                      | 核心方法                                                                                                                              |
-| --- | ------------------------ | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | `VocabularyPreprocessor` | `app/services/vocabulary_preprocessor.py` | `preprocess(raw_items: list[dict]) -> UserVocabulary`                                                                                 |
-| 2   | `NovelPreprocessor`      | `app/services/novel_preprocessor/`        | `preprocess(title: str, raw_text: str) -> list[Chapter]`                                                                              |
-| 3   | `ArcPlanner`             | `app/services/arc_planner.py`             | `plan_next_arc(progress, chapters, prev_arc) -> ArcPlan`                                                                              |
-| 4   | `VocabularyScheduler`    | `app/services/vocabulary_scheduler/`      | `schedule(arc_plan: dict, user_vocab: dict, now: datetime \| None = None, llm_client: Any = None) -> dict` |
-| 5   | `StoryRewriter`          | `app/services/story_rewriter/`            | `rewrite_episode(...) -> RewriteResult`，其中 `target_words_used: list[{item_id, surface}]`（Message.text 含表层形式，不做 lemma 标注；marks 由 Annotator 后补）|
-| 6   | `VocabularyAnnotator`    | `app/services/vocabulary_annotator/`      | `annotate(messages, target_words, shown_set) -> list[Message]`                                                                        |
-| 7   | `EpisodeFormatter`       | `app/services/episode_formatter.py`       | `format_episode(meta, messages, vocab) -> Episode`                                                                                    |
-| 8   | `ReadingTracker`         | `app/services/reading_tracker.py`         | `track(episode_log) -> ReadingProgress`                                                                                               |
-| 9   | `MasteryEvaluator`       | `app/services/mastery_evaluator.py`       | `evaluate(episode_log: EpisodeReadingLog, user_vocab: dict) -> dict`（隐式反馈→history_window 评分→FSRS review_card，含跨日强制机制） |
+| #   | 类                       | 文件                                      | 核心方法                                                                                                                                                         |
+| --- | ------------------------ | ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | `VocabularyPreprocessor` | `app/services/vocabulary_preprocessor.py` | `preprocess(raw_items: list[dict]) -> UserVocabulary`                                                                                                            |
+| 2   | `NovelPreprocessor`      | `app/services/novel_preprocessor/`        | `preprocess(title: str, raw_text: str) -> list[Chapter]`                                                                                                         |
+| 3   | `ArcPlanner`             | `app/services/arc_planner.py`             | `plan_next_arc(progress, chapters, prev_arc) -> ArcPlan`                                                                                                         |
+| 4   | `VocabularyScheduler`    | `app/services/vocabulary_scheduler/`      | `schedule(arc_plan: dict, user_vocab: dict, now: datetime \| None = None, llm_client: Any = None) -> dict`                                                       |
+| 5   | `StoryRewriter`          | `app/services/story_rewriter/`            | `rewrite_episode(...) -> RewriteResult`，其中 `target_words_used: list[{item_id, surface}]`（Message.text 含表层形式，不做 lemma 标注；marks 由 Annotator 后补） |
+| 6   | `VocabularyAnnotator`    | `app/services/vocabulary_annotator/`      | `annotate(messages, target_words, shown_set) -> list[Message]`                                                                                                   |
+| 7   | `EpisodeFormatter`       | `app/services/episode_formatter.py`       | `format_episode(meta, messages, vocab) -> Episode`                                                                                                               |
+| 8   | `ReadingTracker`         | `app/services/reading_tracker.py`         | `track(episode_log) -> ReadingProgress`                                                                                                                          |
+| 9   | `MasteryEvaluator`       | `app/services/mastery_evaluator.py`       | `evaluate(episode_log: EpisodeReadingLog, user_vocab: dict) -> dict`（隐式反馈→history_window 评分→FSRS review_card，含跨日强制机制）                            |
 
 ### VocabularyScheduler 设计（2026-06-06 冻结）
 
@@ -297,7 +299,7 @@ ELBackend/
 3. `pending_words` 只作为优先级 overlay：
    - pending unseen 词排在 unseen_pool 前面
    - pending due 词排在 due_review_pool 前面
-4. unseen_pool 排序：pending 优先，其次 `chapter_first_seen` 升序
+4. unseen_pool 排序：pending 优先，其次 `chapter_first_seen` 升序；`null` 表示尚未知晓首次章节，排在已知章节之后
 5. due_review_pool 排序：pending 优先，其次 `fsrs_card.due` 升序
 6. 每集从两个池各取 `episode_limit * 3` 作为 LLM 初筛候选。
 7. `score_context(source_text, candidates)` 返回 `{item_id: float}`：
@@ -311,7 +313,7 @@ ELBackend/
 9. main episode：新词上限 10，复习词上限 10，pending 词不强塞
 10. side episode：新词上限 10，复习词上限 10，pending 词优先填入
 11. 冷启动：review 词不足时用新词补充，候选不足时不报错
-12. Arc 内去重：同一 item_id 在同一 Arc 内只能有一次 `is_new=true`
+12. Arc 内复现：同一 item_id 在同一 Arc 内只能有一次 `is_new=true`；被引入过的新词会进入本 Arc 复现池，后续 episode 可继续以 `is_new=false` 进入 `target_words`，避免小词表只在第一集出现。
 
 **职责边界**：
 - 不调用 ECDICT
@@ -322,11 +324,11 @@ ELBackend/
 
 ### 编排层（不在 9 个业务模块内）
 
-| 类                     | 文件                                     | 核心方法                                                                                           | 说明                                        |
-| ---------------------- | ---------------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------- |
+| 类                     | 文件                                     | 核心方法                                                                                                                    | 说明                                        |
+| ---------------------- | ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
 | `ArcGenerationManager` | `app/services/arc_generation_manager.py` | `start_generation(arc_id, user_id)` / `get_status() -> ArcGenerationState` / `resume_on_startup()` / `resume_pipeline(...)` | 异步状态机，协调 1→7 模块串行执行。详见 §14 |
-| `JSONStorage[T]`       | `app/db/storage.py`                      | `load() -> T` / `save(obj: T)`                                                                      | V1.5 同步 JSON 文件持久化                    |
-| `InstructorClient`     | `app/llm/client.py`                      | `chat_structured(messages, response_model)`                                                        | instructor + OpenAI 兼容客户端              |
+| `JSONStorage[T]`       | `app/db/storage.py`                      | `load() -> T` / `save(obj: T)`                                                                                              | V1.5 同步 JSON 文件持久化                   |
+| `InstructorClient`     | `app/llm/client.py`                      | `chat_structured(messages, response_model)`                                                                                 | instructor + OpenAI 兼容客户端              |
 
 **注入原则**：所有 service 类**不直接** new 依赖。LLM 客户端、storage、settings 通过 `__init__` 注入，方便测试 mock。
 
@@ -337,13 +339,13 @@ ELBackend/
 | 文件                           | 模型                                                                           | 关键约束                                                                                                                                                                                                                                                                                |
 | ------------------------------ | ------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `app/models/fsrs.py`           | `FsrsCard`                                                                     | `card_id: int`（毫秒时间戳）、`state: int` ∈ {1,2,3}、`stability/difficulty: float \| None`、`due: datetime`、`last_review: datetime \| None`                                                                                                                                           |
-| `app/models/vocabulary.py`     | `VocabularyItem`、`UserVocabulary`                                             | `id`（学习状态唯一主键）、`word`（用户词表/headword 展示词）、`meaning`、`chapter_first_seen: int = Field(ge=1)`、`history_window: list[int]`、`fsrs_card: FsrsCard`                                                                                                                        |
+| `app/models/vocabulary.py`     | `VocabularyItem`、`UserVocabulary`                                             | `id`（学习状态唯一主键）、`word`（用户词表/headword 展示词）、`meaning`、`chapter_first_seen: int \| None = Field(default=None, ge=1)`（上传初始化为 `null`）、`history_window: list[int]`、`fsrs_card: FsrsCard`                                                                       |
 | `app/models/word_sense.py`     | `WordSense`、`WordSenseDB`                                                     | `dict[word, {is_polysemous: bool, senses: list[{id, meaning}]}]`                                                                                                                                                                                                                        |
 | `app/models/chapter.py`        | `Chapter`、`ChapterDB`                                                         | `chapter_id`、`title`、`raw_text`、`summary`、`characters: list[str]`、`world_setting`、`estimated_reading_time: int`                                                                                                                                                                   |
 | `app/models/progress.py`       | `ReadingProgress`                                                              | `current_chapter`、`current_episode`、`chapter_offset: float = Field(ge=0, le=1)`、`total_episodes_read: int = Field(ge=0)`                                                                                                                                                             |
-| `app/models/episode_log.py`    | `WordLog`、`EpisodeReadingLog`                                                 | `word_logs: list[{item_id: str, appeared: int, clicked: int}]`；`item_id` 必填且非空，`word`/`meaning` 仅可作为调试/展示冗余，不参与状态解析                                                                                                                                                                                        |
+| `app/models/episode_log.py`    | `WordLog`、`EpisodeReadingLog`                                                 | `word_logs: list[{item_id: str, appeared: int, clicked: int}]`；`item_id` 必填且非空，`word`/`meaning` 仅可作为调试/展示冗余，不参与状态解析                                                                                                                                            |
 | `app/models/arc_plan.py`       | `PendingWord`、`EpisodeSlot`、`ArcPlan`                                        | `arc_id`、`pending_words`、`episodes: list[EpisodeSlot]`，`EpisodeSlot.episode_type: Literal["main","side"]`                                                                                                                                                                            |
-| `app/models/episode.py`        | `Meta`、`NarrationMessage`、`DialogueMessage`、`Mark`、`VocabEntry`、`Episode` | `Meta.kind: Literal["main","side"]`、`Mark.item_id`（前端回传用主键）、`Mark.index: int = Field(ge=0)`（**按空格分词的词索引**）、`Mark.word: str`（**表层形式**）、`DialogueMessage.side: Literal["left","right"]`（**right=主角**）                                                        |
+| `app/models/episode.py`        | `Meta`、`NarrationMessage`、`DialogueMessage`、`Mark`、`VocabEntry`、`Episode` | `Meta.kind: Literal["main","side"]`、`Mark.item_id`（前端回传用主键）、`Mark.index: int = Field(ge=0)`（**按空格分词的词索引**）、`Mark.word: str`（**表层形式**）、`DialogueMessage.side: Literal["left","right"]`（**right=主角**）                                                   |
 | `app/models/arc_generation.py` | `ArcGenerationState`                                                           | `arc_id: str`、`phase: Literal["IDLE","PLANNING","SCHEDULING","GENERATING","ANNOTATING","FORMATTING","COMPLETE","FAILED"]`、`progress: {current: int, total: int}`、`retry_count: int = Field(ge=0)`、`last_error: str \| None`、`started_at: datetime \| None`、`updated_at: datetime` |
 
 **约束强制点**：
@@ -421,10 +423,10 @@ def atomic_write_json(path: Path, model: BaseModel) -> None: ...
 
 ### 14.2 触发方式
 
-| 方式     | 触发点                              | 调用                                                                                                                   |
-| -------- | ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| 自动     | 用户阅读进度达到当前 Arc 的 **60%** | `ReadingTracker` 调用 `ArcGenerationManager.start_generation(next_arc_id)`                                             |
-| 手动     | `POST /api/v1/arc/generate`         | API 路由调用 `start_generation(arc_id)`                                                                                |
+| 方式     | 触发点                              | 调用                                                                                                                                                                                     |
+| -------- | ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 自动     | 用户阅读进度达到当前 Arc 的 **60%** | `ReadingTracker` 调用 `ArcGenerationManager.start_generation(next_arc_id)`                                                                                                               |
+| 手动     | `POST /api/v1/arc/generate`         | API 路由调用 `start_generation(arc_id)`                                                                                                                                                  |
 | 启动恢复 | 服务启动 lifespan 钩子              | `ArcGenerationManager.resume_on_startup()` 读 `data/arc_generation_state.json`；若 phase ∉ {`IDLE`, `COMPLETE`, `FAILED`}，lifespan 加载词表/章节/进度后调用 `resume_pipeline(...)` 续跑 |
 
 ### 14.3 状态机
@@ -460,12 +462,12 @@ IDLE
 
 ### 14.6 失败处理
 
-| 失败类型                             | 处理                                                                         |
-| ------------------------------------ | ---------------------------------------------------------------------------- |
-| LLM API 单次超时（>300s）            | `httpx.AsyncClient(timeout=300)` 触发异常 → 进入重试                         |
-| LLM 调用业务失败（5xx / rate limit） | 捕获后进入重试                                                               |
-| 重试策略                             | `max_retries=3`，指数退避：10s → 30s → 90s                                   |
-| 3 次全部失败                         | phase 停留 `FAILED`，`last_error` 写入异常 message，等待人工或下一次自动触发 |
+| 失败类型                             | 处理                                                                                                     |
+| ------------------------------------ | -------------------------------------------------------------------------------------------------------- |
+| LLM API 单次超时（>300s）            | `httpx.AsyncClient(timeout=300)` 触发异常 → 进入重试                                                     |
+| LLM 调用业务失败（5xx / rate limit） | 捕获后进入重试                                                                                           |
+| 重试策略                             | `max_retries=3`，指数退避：10s → 30s → 90s                                                               |
+| 3 次全部失败                         | phase 停留 `FAILED`，`last_error` 写入异常 message，等待人工或下一次自动触发                             |
 | 服务进程崩溃                         | 下次启动 `resume_on_startup()` 恢复 checkpoint 状态，lifespan 补齐数据后调用 `resume_pipeline(...)` 续跑 |
 
 ### 14.7 监控

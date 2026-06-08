@@ -177,7 +177,13 @@ def _make_annotated_messages() -> list:
             type="narration",
             text="I began the journey.",
             marks=[
-                Mark(word="journey", index=2, definition="旅程", is_new=True),
+                Mark(
+                    item_id="item_1",
+                    word="journey",
+                    index=2,
+                    definition="旅程",
+                    is_new=True,
+                ),
             ],
         ),
         DialogueMessage(
@@ -197,7 +203,14 @@ def _make_episode_obj() -> Episode:
         messages=[
             NarrationMessage(type="narration", text="Hello.", marks=[]),
         ],
-        vocab=[VocabEntry(word="hello", definition="你好", is_new=True)],
+        vocab=[
+            VocabEntry(
+                item_id="hello_1",
+                word="hello",
+                definition="你好",
+                is_new=True,
+            )
+        ],
     )
 
 
@@ -276,6 +289,7 @@ def manager(
         story_rewriter=mock_story_rewriter,
         vocab_annotator=mock_vocab_annotator,
         episode_formatter=mock_episode_formatter,
+        llm_client="mock_llm",
     )
 
 
@@ -333,6 +347,7 @@ class TestFullPipeline:
 
         # VocabularyScheduler was called
         manager._vocab_scheduler.assert_called_once()
+        assert manager._vocab_scheduler.call_args.kwargs["llm_client"] == "mock_llm"
 
         # StoryRewriter was called for each episode (2 episodes)
         assert manager._story_rewriter.rewrite_episode.call_count == 2
@@ -343,6 +358,34 @@ class TestFullPipeline:
         # EpisodeFormatter was called for each episode
         assert manager._episode_formatter.format_episode.call_count == 2
         assert manager._episode_formatter.write_cache.call_count == 2
+
+    async def test_lazy_annotator_factory_used_during_annotating(
+        self,
+        mock_arc_planner,
+        mock_vocab_scheduler,
+        mock_story_rewriter,
+        mock_vocab_annotator,
+        mock_episode_formatter,
+        pipeline_data,
+        tmp_path: Path,
+    ):
+        """Annotator may be created lazily so status polling stays lightweight."""
+        factory = mock.MagicMock(return_value=mock_vocab_annotator)
+        manager = ArcGenerationManager(
+            arc_planner=mock_arc_planner,
+            vocab_scheduler=mock_vocab_scheduler,
+            story_rewriter=mock_story_rewriter,
+            vocab_annotator_factory=factory,
+            episode_formatter=mock_episode_formatter,
+        )
+        data_dir = tmp_path / "data"
+        data_dir.mkdir()
+        monkeypatch_checkpoint(manager, data_dir / "arc_generation_state.json")
+
+        await manager._run_pipeline(**pipeline_data)
+
+        assert factory.call_count == 2
+        assert mock_vocab_annotator.annotate.call_count == 2
 
     async def test_checkpoint_written_after_each_phase(
         self, manager, pipeline_data, tmp_path: Path

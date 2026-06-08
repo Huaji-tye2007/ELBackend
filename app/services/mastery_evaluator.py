@@ -125,7 +125,7 @@ class MasteryEvaluator:
         # clicked=0 → push 1 (word appeared but user didn't click → recall success)
         # clicked>0 → push 0 (user clicked for definition → recall failure)
         new_value = 1 if (word_log.appeared > 0 and word_log.clicked == 0) else 0
-        new_window = item.history_window[1:] + [new_value]
+        new_window = _push_history_window(item.history_window, new_value)
 
         # Step 3: Weighted score
         score = sum(w * h for w, h in zip(self._weights, new_window)) / sum(
@@ -179,3 +179,16 @@ class MasteryEvaluator:
             word_log.item_id,
         )
         return False
+
+
+def _push_history_window(history_window: list[int], new_value: int) -> list[int]:
+    """Push one feedback value into the 5-slot implicit-feedback window.
+
+    New words may start with a short window such as ``[0]``.  Missing older
+    slots are treated as successful smooth reads (``1``), matching the product
+    rule that a not-yet-full window should be padded with acceptance signals.
+    """
+    updated = [*history_window, new_value][-5:]
+    if len(updated) < 5:
+        updated = [1] * (5 - len(updated)) + updated
+    return updated

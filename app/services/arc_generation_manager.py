@@ -54,7 +54,9 @@ class ArcGenerationManager:
         vocab_scheduler: Any = None,
         story_rewriter: Any = None,
         vocab_annotator: Any = None,
+        vocab_annotator_factory: Any = None,
         episode_formatter: Any = None,
+        llm_client: Any = None,
     ) -> None:
         """Initialise with all five upstream services injected.
 
@@ -63,14 +65,21 @@ class ArcGenerationManager:
             vocab_scheduler: ``schedule()`` callable from vocabulary_scheduler.
             story_rewriter: StoryRewriter instance (has ``rewrite_episode()``).
             vocab_annotator: VocabularyAnnotator instance (has ``annotate()``).
+            vocab_annotator_factory: Optional callable returning a fresh
+                VocabularyAnnotator. Used by DI so status polling does not
+                eagerly load UserVocabulary/ECDICT.
             episode_formatter: EpisodeFormatter instance (has ``format_episode()``
                 and ``write_cache()``).
+            llm_client: Optional LLM client passed into VocabularyScheduler for
+                contextual scoring.
         """
         self._arc_planner = arc_planner
         self._vocab_scheduler = vocab_scheduler
         self._story_rewriter = story_rewriter
         self._vocab_annotator = vocab_annotator
+        self._vocab_annotator_factory = vocab_annotator_factory
         self._episode_formatter = episode_formatter
+        self._llm_client = llm_client
 
         self._lock = asyncio.Lock()
         self._state: ArcGenerationState | None = None
@@ -301,6 +310,7 @@ class ArcGenerationManager:
                 arc_plan=arc_plan.model_dump(),
                 user_vocab=user_vocab.model_dump(),
                 now=datetime.datetime.now(datetime.timezone.utc),
+                llm_client=self._llm_client,
             )
             if not ok:
                 return
@@ -361,6 +371,7 @@ class ArcGenerationManager:
 
             annotated_episodes: list[list[Any]] = []
             for i, (result, ep_dict) in enumerate(zip(rewrite_results, episodes)):
+                vocab_annotator = self._get_vocab_annotator()
                 used_by_id: dict[str, dict[str, str]] = {}
                 for used in (
                     result.target_words_used
@@ -388,7 +399,7 @@ class ArcGenerationManager:
 
                 ok, annotated_msgs = await self._retry_call(
                     phase=f"ANNOTATING({i + 1}/{total_episodes})",
-                    fn=self._vocab_annotator.annotate,
+                    fn=vocab_annotator.annotate,
                     messages=list(result.messages),
                     target_words=target_words_used,
                     shown_set=shown_set,
@@ -578,6 +589,12 @@ class ArcGenerationManager:
                     return (False, None)
 
         return (False, None)
+
+    def _get_vocab_annotator(self) -> Any:
+        """Return the injected annotator, constructing it lazily if needed."""
+        if self._vocab_annotator_factory is not None:
+            return self._vocab_annotator_factory()
+        return self._vocab_annotator
 
     # ------------------------------------------------------------------
     # Checkpoint persistence

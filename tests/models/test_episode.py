@@ -11,11 +11,23 @@ from pydantic import ValidationError
 from app.models.episode import (
     DialogueMessage,
     Episode,
-    Mark,
+    Mark as EpisodeMark,
     Meta,
     NarrationMessage,
-    VocabEntry,
+    VocabEntry as EpisodeVocabEntry,
 )
+
+
+def Mark(**kwargs) -> EpisodeMark:
+    """Create a Mark with a default item_id for tests."""
+    kwargs.setdefault("item_id", f"{kwargs.get('word', 'item')}_1")
+    return EpisodeMark(**kwargs)
+
+
+def VocabEntry(**kwargs) -> EpisodeVocabEntry:
+    """Create a VocabEntry with a default item_id for tests."""
+    kwargs.setdefault("item_id", f"{kwargs.get('word', 'item')}_1")
+    return EpisodeVocabEntry(**kwargs)
 
 
 class TestMeta:
@@ -63,6 +75,22 @@ class TestMark:
     def test_valid_review(self) -> None:
         mark = Mark(word="footstep", index=0, definition="脚步", is_new=False)
         assert mark.is_new is False
+
+    def test_item_id_required(self) -> None:
+        """item_id is required so reading logs can round-trip marks safely."""
+        with pytest.raises(ValidationError):
+            EpisodeMark(word="footstep", index=0, definition="脚步", is_new=False)
+
+    def test_item_id_must_not_be_empty(self) -> None:
+        """item_id cannot be an empty string."""
+        with pytest.raises(ValidationError):
+            EpisodeMark(
+                item_id="",
+                word="footstep",
+                index=0,
+                definition="脚步",
+                is_new=False,
+            )
 
     def test_index_zero_is_valid(self) -> None:
         """index=0 (first word in text) should be valid."""
@@ -207,6 +235,11 @@ class TestVocabEntry:
         ve = VocabEntry(word="footstep", definition="脚步", is_new=False)
         assert ve.is_new is False
 
+    def test_item_id_required(self) -> None:
+        """item_id is required for episode vocab entries."""
+        with pytest.raises(ValidationError):
+            EpisodeVocabEntry(word="footstep", definition="脚步", is_new=False)
+
 
 class TestEpisode:
     """Tests for Episode model with full FormatSpec v3 roundtrip.
@@ -289,7 +322,7 @@ class TestEpisode:
                     "type": "narration",
                     "text": "Footsteps approach. A shadow falls across my table.",
                     "marks": [
-                        { "word": "footstep", "index": 0, "definition": "脚步", "is_new": false }
+                        { "item_id": "footstep_1", "word": "footstep", "index": 0, "definition": "脚步", "is_new": false }
                     ]
                 },
                 {
@@ -310,7 +343,7 @@ class TestEpisode:
                     "type": "narration",
                     "text": "This is the moment my quiet invisible life ends.",
                     "marks": [
-                        { "word": "invisible", "index": 6, "definition": "隐形的", "is_new": true }
+                        { "item_id": "invisible_1", "word": "invisible", "index": 6, "definition": "隐形的", "is_new": true }
                     ]
                 },
                 {
@@ -322,8 +355,8 @@ class TestEpisode:
                 }
             ],
             "vocab": [
-                { "word": "footstep", "definition": "脚步", "is_new": false },
-                { "word": "invisible", "definition": "隐形的", "is_new": true }
+                { "item_id": "footstep_1", "word": "footstep", "definition": "脚步", "is_new": false },
+                { "item_id": "invisible_1", "word": "invisible", "definition": "隐形的", "is_new": true }
             ]
         }""")
         ep = Episode.model_validate(data)

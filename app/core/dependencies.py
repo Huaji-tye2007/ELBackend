@@ -261,8 +261,9 @@ def get_arc_generation_manager():
         arc_planner=get_arc_planner(),
         vocab_scheduler=get_vocabulary_scheduler(),
         story_rewriter=get_story_rewriter(),
-        vocab_annotator=get_vocabulary_annotator(),
+        vocab_annotator_factory=get_vocabulary_annotator,
         episode_formatter=get_episode_formatter(),
+        llm_client=get_llm_client(),
     )
 
 

@@ -30,6 +30,7 @@ def _make_episode_json(episode_id: int) -> str:
                     "text": "Something happened.",
                     "marks": [
                         {
+                            "item_id": "something_1",
                             "word": "something",
                             "index": 0,
                             "definition": "某事",
@@ -45,7 +46,14 @@ def _make_episode_json(episode_id: int) -> str:
                     "marks": [],
                 },
             ],
-            "vocab": [{"word": "something", "definition": "某事", "is_new": True}],
+            "vocab": [
+                {
+                    "item_id": "something_1",
+                    "word": "something",
+                    "definition": "某事",
+                    "is_new": True,
+                }
+            ],
         }
     )
 
@@ -217,12 +225,14 @@ class TestGetEpisode:
                         "text": "The bank said the bank was closed.",
                         "marks": [
                             {
+                                "item_id": "bank_finance",
                                 "word": "bank",
                                 "index": 1,
                                 "definition": "银行",
                                 "is_new": True,
                             },
                             {
+                                "item_id": "bank_river",
                                 "word": "bank",
                                 "index": 4,
                                 "definition": "河岸",
@@ -232,8 +242,18 @@ class TestGetEpisode:
                     },
                 ],
                 "vocab": [
-                    {"word": "bank", "definition": "银行", "is_new": True},
-                    {"word": "bank", "definition": "河岸", "is_new": True},
+                    {
+                        "item_id": "bank_finance",
+                        "word": "bank",
+                        "definition": "银行",
+                        "is_new": True,
+                    },
+                    {
+                        "item_id": "bank_river",
+                        "word": "bank",
+                        "definition": "河岸",
+                        "is_new": True,
+                    },
                 ],
             }
         )

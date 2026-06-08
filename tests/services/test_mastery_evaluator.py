@@ -253,6 +253,21 @@ class TestHistoryWindow:
 
         assert result.vocab_index["new_word"].history_window == [1, 1, 1, 1, 1]
 
+    def test_short_new_word_window_pads_with_acceptance(self) -> None:
+        """Short new-word window is padded with 1s before scoring."""
+        item = _vocab_item("new_word", history_window=[0])
+        uv = _user_vocab(item)
+        log = _episode_log(_word_log("new_word", appeared=1, clicked=0))
+
+        evaluator = MasteryEvaluator()
+        mock_review = mock.MagicMock(return_value=_mock_review_return())
+        evaluator._scheduler.review_card = mock_review
+        result = evaluator.evaluate(log, uv)
+
+        assert result.vocab_index["new_word"].history_window == [1, 1, 1, 0, 1]
+        _, rating = mock_review.call_args[0]
+        assert rating == Rating.Good
+
 
 # ============================================================================
 # Weighted score (verified through Rating argument to review_card)

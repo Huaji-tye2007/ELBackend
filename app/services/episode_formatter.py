@@ -101,16 +101,11 @@ class EpisodeFormatter:
         ``(word, definition)`` for manually supplied marks. If any mark for a
         given object has ``is_new=True``, the vocab entry is marked new.
         """
-        seen: dict[tuple[str, str], tuple[str | None, str, str, bool]] = {}
+        seen: dict[tuple[str, str], tuple[str, str, str, bool]] = {}
 
         for msg in messages:
             for mark in msg.marks:
-                if mark.item_id:
-                    key = ("item_id", mark.item_id)
-                elif mark.lemma:
-                    key = ("lemma", f"{mark.lemma.lower()}::{mark.definition}")
-                else:
-                    key = ("surface", f"{mark.word.lower()}::{mark.definition}")
+                key = ("item_id", mark.item_id)
 
                 previous = seen.get(key)
                 if previous is None:

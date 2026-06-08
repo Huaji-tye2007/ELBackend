@@ -286,6 +286,7 @@ IDLE -> PLANNING -> SCHEDULING -> GENERATING -> ANNOTATING -> FORMATTING -> COMP
 ```
 
 前端建议每 5-10 秒轮询一次。`phase = "COMPLETE"` 后再读取 episode。
+`/arc/status` 是轻量状态接口，冷启动时即使尚未上传词表或尚未提供 ECDICT，也应返回 `IDLE`，不会触发生成依赖加载。
 
 ### 5.7 查询 Episode Cache
 

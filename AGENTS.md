@@ -272,8 +272,8 @@ ELBackend/
 | 1   | `VocabularyPreprocessor` | `app/services/vocabulary_preprocessor.py` | `preprocess(raw_items: list[dict]) -> UserVocabulary`                                                                                 |
 | 2   | `NovelPreprocessor`      | `app/services/novel_preprocessor/`        | `preprocess(title: str, raw_text: str) -> list[Chapter]`                                                                              |
 | 3   | `ArcPlanner`             | `app/services/arc_planner.py`             | `plan_next_arc(progress, chapters, prev_arc) -> ArcPlan`                                                                              |
-| 4   | `VocabularyScheduler`    | `app/services/vocabulary_scheduler/`      | `schedule(arc_plan: dict, user_vocab: dict, now: datetime                                                                             | None = None) -> dict` |
-| 5   | `StoryRewriter`          | `app/services/story_rewriter/`            | `rewrite_episode(target_words, chapter_slice) -> tuple[list[Message], list[str]]`（Message.text 含表层形式，不做 lemma 标注；marks 由 Annotator 后补）|
+| 4   | `VocabularyScheduler`    | `app/services/vocabulary_scheduler/`      | `schedule(arc_plan: dict, user_vocab: dict, now: datetime \| None = None, llm_client: Any = None) -> dict` |
+| 5   | `StoryRewriter`          | `app/services/story_rewriter/`            | `rewrite_episode(...) -> RewriteResult`，其中 `target_words_used: list[{item_id, surface}]`（Message.text 含表层形式，不做 lemma 标注；marks 由 Annotator 后补）|
 | 6   | `VocabularyAnnotator`    | `app/services/vocabulary_annotator/`      | `annotate(messages, target_words, shown_set) -> list[Message]`                                                                        |
 | 7   | `EpisodeFormatter`       | `app/services/episode_formatter.py`       | `format_episode(meta, messages, vocab) -> Episode`                                                                                    |
 | 8   | `ReadingTracker`         | `app/services/reading_tracker.py`         | `track(episode_log) -> ReadingProgress`                                                                                               |
@@ -324,8 +324,8 @@ ELBackend/
 
 | 类                     | 文件                                     | 核心方法                                                                                           | 说明                                        |
 | ---------------------- | ---------------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------- |
-| `ArcGenerationManager` | `app/services/arc_generation_manager.py` | `start_generation(arc_id, user_id)` / `get_status() -> ArcGenerationState` / `resume_on_startup()` | 异步状态机，协调 1→7 模块串行执行。详见 §14 |
-| `JSONStorage[T]`       | `app/db/storage.py`                      | `load() -> T` / `save(obj: T)` / `append(item)`                                                    | V1.5 JSON 文件持久化                        |
+| `ArcGenerationManager` | `app/services/arc_generation_manager.py` | `start_generation(arc_id, user_id)` / `get_status() -> ArcGenerationState` / `resume_on_startup()` / `resume_pipeline(...)` | 异步状态机，协调 1→7 模块串行执行。详见 §14 |
+| `JSONStorage[T]`       | `app/db/storage.py`                      | `load() -> T` / `save(obj: T)`                                                                      | V1.5 同步 JSON 文件持久化                    |
 | `InstructorClient`     | `app/llm/client.py`                      | `chat_structured(messages, response_model)`                                                        | instructor + OpenAI 兼容客户端              |
 
 **注入原则**：所有 service 类**不直接** new 依赖。LLM 客户端、storage、settings 通过 `__init__` 注入，方便测试 mock。
@@ -380,12 +380,13 @@ def find_word_index(text: str, surface: str, occurrence: int = 0) -> int: ...
 ```python
 class JSONStorage(Generic[T]):
     def __init__(self, path: Path, model: type[T]): ...
-    async def load(self) -> T: ...
-    async def save(self, obj: T) -> None: ...
+    def load(self) -> T: ...
+    def save(self, obj: T) -> None: ...
 ```
 
 - 加载：读 JSON → `model.model_validate(...)`
 - 保存：`model.model_dump_json()` → 走 `atomic_write_json`
+- 当前实现为同步文件 IO；调用方不要 `await storage.load()` / `await storage.save(...)`。
 
 ### `app/llm/client.py` — Instructor 客户端
 
@@ -402,10 +403,10 @@ class InstructorClient:
 ### `app/utils/atomic_io.py` — JSON 原子写入
 
 ```python
-async def atomic_write_json(path: Path, model: BaseModel) -> None: ...
+def atomic_write_json(path: Path, model: BaseModel) -> None: ...
 ```
 
-- 写临时文件 `path.with_suffix(".tmp")` → `aiofiles.write` → `os.replace(tmp, path)`
+- 写临时文件 `path.with_suffix(".tmp")` → `Path.write_text(...)` → `os.replace(tmp, path)`
 - 保证并发安全：避免半写文件（进程崩溃在 fsync 之前）
 - **所有 JSON 持久化**（UserVocabulary、ArcGenerationState、Episode Cache）必须走此函数，**禁止**直接 `f.write(json.dumps(...))`
 
@@ -424,7 +425,7 @@ async def atomic_write_json(path: Path, model: BaseModel) -> None: ...
 | -------- | ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
 | 自动     | 用户阅读进度达到当前 Arc 的 **60%** | `ReadingTracker` 调用 `ArcGenerationManager.start_generation(next_arc_id)`                                             |
 | 手动     | `POST /api/v1/arc/generate`         | API 路由调用 `start_generation(arc_id)`                                                                                |
-| 启动恢复 | 服务启动 lifespan 钩子              | `ArcGenerationManager.resume_on_startup()` 读 `data/arc_generation_state.json`；若 phase ∉ {`IDLE`, `COMPLETE`} 则续跑 |
+| 启动恢复 | 服务启动 lifespan 钩子              | `ArcGenerationManager.resume_on_startup()` 读 `data/arc_generation_state.json`；若 phase ∉ {`IDLE`, `COMPLETE`, `FAILED`}，lifespan 加载词表/章节/进度后调用 `resume_pipeline(...)` 续跑 |
 
 ### 14.3 状态机
 
@@ -454,7 +455,7 @@ IDLE
 
 ### 14.5 并发约束
 - 同一时刻只允许一个 Arc 在生成中（V1.5 单用户假设）
-- `ArcGenerationManager` 是**进程内单例**，通过 FastAPI `Depends` 注入
+- `ArcGenerationManager` 是**进程内单例**，通过 FastAPI `Depends` 注入；构造 manager 不应立即加载 UserVocabulary 或打开 ECDICT，Annotator 通过 lazy factory 到 ANNOTATING 阶段再创建，保证 `GET /api/v1/arc/status` 冷启动可用
 - 内部用 `asyncio.Lock` 保护状态转换，确保 `start_generation` 不会被并发触发
 
 ### 14.6 失败处理
@@ -465,7 +466,7 @@ IDLE
 | LLM 调用业务失败（5xx / rate limit） | 捕获后进入重试                                                               |
 | 重试策略                             | `max_retries=3`，指数退避：10s → 30s → 90s                                   |
 | 3 次全部失败                         | phase 停留 `FAILED`，`last_error` 写入异常 message，等待人工或下一次自动触发 |
-| 服务进程崩溃                         | 下次启动 `resume_on_startup()` 从最后一个 checkpoint 续跑                    |
+| 服务进程崩溃                         | 下次启动 `resume_on_startup()` 恢复 checkpoint 状态，lifespan 补齐数据后调用 `resume_pipeline(...)` 续跑 |
 
 ### 14.7 监控
 - 监控接口即 `GET /api/v1/arc/status`
@@ -622,7 +623,7 @@ IDLE
 
 - 状态机的**每个 transition 都要测试**（IDLE→PLANNING, PLANNING→SCHEDULING, ..., 各种 →FAILED 路径）
 - mock 全部 9 个 service 类，单独验证编排逻辑
-- 重启恢复：构造 phase 在 `GENERATING(4/10)` 的 checkpoint 文件，验证 `resume_on_startup()` 从第 5 集继续
+- 重启恢复：构造 phase 在 `GENERATING(4/10)` 的 checkpoint 文件，验证 `resume_on_startup()` 恢复状态，且 `resume_pipeline(...)` 能继续/重跑到 COMPLETE
 - 重试退避：用 `time_machine` 验证 10s/30s/90s 间隔
 
 ### 16.10 不要这样做

@@ -29,7 +29,7 @@ class Mark(BaseModel):
         is_new: True if this item_id is first-seen in the whole work.
     """
 
-    item_id: str | None = None
+    item_id: str = Field(min_length=1)
     word: str
     index: int = Field(ge=0)
     definition: str
@@ -68,7 +68,7 @@ class VocabEntry(BaseModel):
     Derived from marks across all messages for frontend convenience.
     """
 
-    item_id: str | None = None
+    item_id: str = Field(min_length=1)
     word: str
     definition: str
     is_new: bool

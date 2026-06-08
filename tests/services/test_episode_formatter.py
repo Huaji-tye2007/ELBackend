@@ -127,7 +127,15 @@ def test_mark_index_is_space_split_zero_based(formatter: EpisodeFormatter):
     messages = [
         _make_narration(
             text,
-            marks=[{"word": "bank", "index": 1, "definition": "河岸", "is_new": True}],
+            marks=[
+                {
+                    "item_id": "bank_river",
+                    "word": "bank",
+                    "index": 1,
+                    "definition": "河岸",
+                    "is_new": True,
+                }
+            ],
         )
     ]
     episode = formatter.format_episode(meta, messages)
@@ -153,7 +161,13 @@ def test_mark_word_is_surface_form(formatter: EpisodeFormatter):
         _make_narration(
             text,
             marks=[
-                {"word": "consuming", "index": 2, "definition": "消耗", "is_new": True}
+                {
+                    "item_id": "consume_1",
+                    "word": "consuming",
+                    "index": 2,
+                    "definition": "消耗",
+                    "is_new": True,
+                }
             ],
         )
     ]
@@ -283,6 +297,20 @@ def test_invalid_meta_kind_raises_validation_error(formatter: EpisodeFormatter):
     meta = {"ep": 10, "title": "Bad Kind", "kind": "invalid"}
     with pytest.raises(ValidationError):
         formatter.format_episode(meta, [])
+
+
+def test_mark_without_item_id_raises_validation_error(formatter: EpisodeFormatter):
+    """Episode marks must carry item_id for reading-log roundtrip."""
+    meta = {"ep": 11, "title": "Missing Item", "kind": "main"}
+    messages = [
+        _make_narration(
+            "The bank closed.",
+            marks=[{"word": "bank", "index": 1, "definition": "银行", "is_new": True}],
+        )
+    ]
+
+    with pytest.raises(ValidationError):
+        formatter.format_episode(meta, messages)
 
 
 def test_write_cache_creates_file(formatter: EpisodeFormatter):

@@ -556,15 +556,22 @@ class TestGetArcGenerationManager:
         _clear_all_caches()
         from app.services.arc_generation_manager import ArcGenerationManager
 
-        # Mock vocab storage to avoid FileNotFoundError on data/UserVocabulary.json
-        with _mock_vocab_storage():
+        with mock.patch.dict(
+            os.environ,
+            {
+                "DATA_DIR": "missing/data",
+                "ECDICT_DB_PATH": "missing/ecdict.db",
+                "LLM_API_KEY": "sk-test",
+            },
+            clear=True,
+        ):
             manager = get_arc_generation_manager()
         assert isinstance(manager, ArcGenerationManager)
 
     def test_singleton_returns_same_instance(self) -> None:
         """Multiple calls must return the same ArcGenerationManager."""
         _clear_all_caches()
-        with _mock_vocab_storage():
+        with mock.patch.dict(os.environ, {"LLM_API_KEY": "sk-test"}, clear=True):
             a1 = get_arc_generation_manager()
             a2 = get_arc_generation_manager()
         assert a1 is a2

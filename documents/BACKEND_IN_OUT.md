@@ -158,7 +158,7 @@ Mastery Evaluator
 | word               | 英文单词原形（lemma），供 LLM 生成对话和 lemma_index 构建使用                                                                                   |
 | meaning            | 当前学习义项                                                                                                                                    |
 | chapter_first_seen | 首次出现章节                                                                                                                                    |
-| history_window     | 最近 N 次隐式阅读反馈，1 = 顺畅滑过（未点击释义），0 = 点击查看释义。由 Mastery Evaluator 滚动更新，用于计算喂给 FSRS 的加权评分。初始化为[0]。 |
+| history_window     | 最近 5 次隐式阅读反馈，1 = 顺畅滑过（未点击释义），0 = 点击查看释义。由 Mastery Evaluator 滚动更新，用于计算喂给 FSRS 的加权评分。上传初始化可为短窗口（如 `[0]`），评分前由 Evaluator 用 `1` 补齐到 5 位。 |
 
 
 ---
@@ -555,7 +555,7 @@ Story Rewriter 不再只考虑当前集。
 
 + target_words
 + episode_type
-+ **输出文本中的词汇均为表层形式**（屈折形态，如 `"consuming"` / `"went"` / `"ran"`）。Rewriter 不做 lemma 归一化——lemma 映射完全由 VocabularyAnnotator 通过 ECDICT 完成。
++ **输出文本中的词汇均为表层形式**（屈折形态，如 `"consuming"` / `"went"` / `"ran"`）。Rewriter 不做 lemma 归一化，但必须在结构化输出中报告成功嵌入词的 `{item_id, surface}`；Annotator 优先用 surface 定位，只有缺 surface 时才用 ECDICT 兜底。
 
 ---
 
@@ -709,7 +709,7 @@ ReadingProgress.json
 #### 1. 隐式消抖窗口 (`history_window`)
 - 每个 `VocabularyItem` 维护长度为 5 的 FIFO 队列 `history_window`
 - 新值 = `1`（认可）或 `0`（点击查询），依据：`appeared > 0 且 clicked == 0` → `1`，否则 → `0`
-- 旧值出队，新值入队；新词（窗口未满）用 `1` 填充
+- 先将旧窗口追加新值并截取最近 5 位；若窗口仍未满 5 位，则在左侧用 `1` 填充。例：`[0] + 顺畅阅读(1)` → `[1, 1, 1, 0, 1]`
 
 #### 2. 加权评分
 ```python
@@ -798,7 +798,7 @@ fsrs_card["last_review"] = datetime.now(timezone.utc).isoformat()
 ### 注意事项
 - **不调用 LLM**：本模块纯计算，不依赖外部 API
 - **不删除词汇**：即使稳定度极高，词汇**永久保留**在 UserVocabulary 中，前端可选择性展示
-- **`history_window` 初始值**：新词首次出现时窗口全部填 `1`（视为"认可"），后续逐步被真实数据替换
+- **`history_window` 初始值**：上传初始化可为 `[0]`，但 Evaluator 在首次评分前会把未满 5 位的窗口用 `1` 填充（视为"认可"），后续逐步被真实数据替换
 - **`elapsed_days` 计算**：FSRS 库需要知道距离上一次复习过了几天；`review_card()` 内部会自动根据 `last_review` 和当前时间推算，调用方通常无需手动计算
 - **`VocabularyScheduler` 互斥**：Scheduler 只负责"选词出题"，MasteryEvaluator 只负责"收到反馈后更新卡片"——两个模块**只读/只写 fsrs_card 的不同字段**，避免冲突
 

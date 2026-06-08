@@ -38,7 +38,9 @@ class TestInit:
         """__init__ stores model in _model and wraps AsyncOpenAI with instructor."""
         with mock.patch("app.llm.client.instructor.from_openai") as mock_from_openai:
             with mock.patch("app.llm.client.AsyncOpenAI") as mock_async_openai:
-                client = __import__("app.llm.client", fromlist=["InstructorClient"]).InstructorClient(
+                client = __import__(
+                    "app.llm.client", fromlist=["InstructorClient"]
+                ).InstructorClient(
                     base_url="http://localhost:11434/v1",
                     api_key="sk-test",
                     model="deepseek-v4-flash",
@@ -50,12 +52,15 @@ class TestInit:
                     timeout=300.0,
                 )
                 mock_from_openai.assert_called_once()
+                assert mock_from_openai.call_args.kwargs["mode"].name == "JSON"
 
     def test_init_passes_custom_timeout_to_async_openai(self) -> None:
         """Custom timeout value is forwarded to AsyncOpenAI constructor."""
         with mock.patch("app.llm.client.instructor.from_openai"):
             with mock.patch("app.llm.client.AsyncOpenAI") as mock_async_openai:
-                __import__("app.llm.client", fromlist=["InstructorClient"]).InstructorClient(
+                __import__(
+                    "app.llm.client", fromlist=["InstructorClient"]
+                ).InstructorClient(
                     base_url="http://api:8080/v1",
                     api_key="sk-custom",
                     model="gpt-4o-mini",
@@ -68,12 +73,30 @@ class TestInit:
         """model property returns the model name passed to __init__."""
         with mock.patch("app.llm.client.instructor.from_openai"):
             with mock.patch("app.llm.client.AsyncOpenAI"):
-                client = __import__("app.llm.client", fromlist=["InstructorClient"]).InstructorClient(
+                client = __import__(
+                    "app.llm.client", fromlist=["InstructorClient"]
+                ).InstructorClient(
                     base_url="http://custom:8080/v1",
                     api_key="sk-abc",
                     model="gpt-4o-mini",
                 )
                 assert client.model == "gpt-4o-mini"
+                assert client.mode.name == "JSON"
+
+    def test_init_accepts_custom_instructor_mode(self) -> None:
+        """Custom instructor mode names are coerced and passed to instructor."""
+        with mock.patch("app.llm.client.instructor.from_openai") as mock_from_openai:
+            with mock.patch("app.llm.client.AsyncOpenAI"):
+                client = __import__(
+                    "app.llm.client", fromlist=["InstructorClient"]
+                ).InstructorClient(
+                    base_url="http://custom:8080/v1",
+                    api_key="sk-abc",
+                    model="gpt-4o-mini",
+                    instructor_mode="TOOLS",
+                )
+                assert client.mode.name == "TOOLS"
+                assert mock_from_openai.call_args.kwargs["mode"].name == "TOOLS"
 
 
 # ---------------------------------------------------------------------------
@@ -89,7 +112,9 @@ class TestChatStructured:
         """chat_structured() should be an async coroutine function."""
         with mock.patch("app.llm.client.instructor.from_openai"):
             with mock.patch("app.llm.client.AsyncOpenAI"):
-                client = __import__("app.llm.client", fromlist=["InstructorClient"]).InstructorClient(
+                client = __import__(
+                    "app.llm.client", fromlist=["InstructorClient"]
+                ).InstructorClient(
                     base_url="http://localhost:11434/v1",
                     api_key="sk-test",
                     model="deepseek-v4-flash",
@@ -105,9 +130,13 @@ class TestChatStructured:
         mock_inner = mock.AsyncMock()
         mock_inner.create = mock.AsyncMock(return_value=expected)
 
-        with mock.patch("app.llm.client.instructor.from_openai", return_value=mock_inner):
+        with mock.patch(
+            "app.llm.client.instructor.from_openai", return_value=mock_inner
+        ):
             with mock.patch("app.llm.client.AsyncOpenAI"):
-                client = __import__("app.llm.client", fromlist=["InstructorClient"]).InstructorClient(
+                client = __import__(
+                    "app.llm.client", fromlist=["InstructorClient"]
+                ).InstructorClient(
                     base_url="http://api:8080/v1",
                     api_key="sk-test",
                     model="deepseek-v4-flash",
@@ -126,17 +155,25 @@ class TestChatStructured:
         call_kwargs = mock_inner.create.call_args.kwargs
         assert call_kwargs["model"] == "deepseek-v4-flash"
         assert call_kwargs["response_model"] == _FakeResponse
-        assert call_kwargs["messages"] == [{"role": "user", "content": "What is the answer?"}]
+        assert call_kwargs["messages"] == [
+            {"role": "user", "content": "What is the answer?"}
+        ]
 
     @pytest.mark.asyncio
     async def test_forwards_extra_kwargs_to_instructor(self) -> None:
         """Extra kwargs (e.g. max_tokens, temperature) are forwarded."""
         mock_inner = mock.AsyncMock()
-        mock_inner.create = mock.AsyncMock(return_value=_FakeResponse(value=1, label="x"))
+        mock_inner.create = mock.AsyncMock(
+            return_value=_FakeResponse(value=1, label="x")
+        )
 
-        with mock.patch("app.llm.client.instructor.from_openai", return_value=mock_inner):
+        with mock.patch(
+            "app.llm.client.instructor.from_openai", return_value=mock_inner
+        ):
             with mock.patch("app.llm.client.AsyncOpenAI"):
-                client = __import__("app.llm.client", fromlist=["InstructorClient"]).InstructorClient(
+                client = __import__(
+                    "app.llm.client", fromlist=["InstructorClient"]
+                ).InstructorClient(
                     base_url="http://api:8080/v1",
                     api_key="sk-test",
                     model="deepseek-v4-flash",
@@ -178,9 +215,13 @@ class TestChatStructuredErrors:
             )
         )
 
-        with mock.patch("app.llm.client.instructor.from_openai", return_value=mock_inner):
+        with mock.patch(
+            "app.llm.client.instructor.from_openai", return_value=mock_inner
+        ):
             with mock.patch("app.llm.client.AsyncOpenAI"):
-                client = __import__("app.llm.client", fromlist=["InstructorClient"]).InstructorClient(
+                client = __import__(
+                    "app.llm.client", fromlist=["InstructorClient"]
+                ).InstructorClient(
                     base_url="http://api:8080/v1",
                     api_key="sk-test",
                     model="deepseek-v4-flash",
@@ -206,9 +247,13 @@ class TestChatStructuredErrors:
             )
         )
 
-        with mock.patch("app.llm.client.instructor.from_openai", return_value=mock_inner):
+        with mock.patch(
+            "app.llm.client.instructor.from_openai", return_value=mock_inner
+        ):
             with mock.patch("app.llm.client.AsyncOpenAI"):
-                client = __import__("app.llm.client", fromlist=["InstructorClient"]).InstructorClient(
+                client = __import__(
+                    "app.llm.client", fromlist=["InstructorClient"]
+                ).InstructorClient(
                     base_url="http://api:8080/v1",
                     api_key="sk-bad",
                     model="deepseek-v4-flash",
@@ -230,9 +275,13 @@ class TestChatStructuredErrors:
             side_effect=httpx.ReadTimeout("Request timed out")
         )
 
-        with mock.patch("app.llm.client.instructor.from_openai", return_value=mock_inner):
+        with mock.patch(
+            "app.llm.client.instructor.from_openai", return_value=mock_inner
+        ):
             with mock.patch("app.llm.client.AsyncOpenAI"):
-                client = __import__("app.llm.client", fromlist=["InstructorClient"]).InstructorClient(
+                client = __import__(
+                    "app.llm.client", fromlist=["InstructorClient"]
+                ).InstructorClient(
                     base_url="http://api:8080/v1",
                     api_key="sk-test",
                     model="deepseek-v4-flash",

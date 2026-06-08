@@ -28,6 +28,7 @@ class InstructorClient:
         api_key: str,
         model: str,
         timeout: float = 300.0,
+        instructor_mode: str | instructor.Mode = instructor.Mode.JSON,
     ) -> None:
         """Initialize the client.
 
@@ -38,14 +39,19 @@ class InstructorClient:
             model: Model name
                 (e.g. ``"deepseek-v4-flash"``, ``"gpt-4o-mini"``).
             timeout: HTTP request timeout in seconds (default 300).
+            instructor_mode: Instructor mode used for structured output.
+                Defaults to ``JSON`` to avoid tool_choice, which some thinking
+                models reject.
         """
+        mode = _coerce_instructor_mode(instructor_mode)
         raw_client = AsyncOpenAI(
             base_url=base_url,
             api_key=api_key,
             timeout=timeout,
         )
-        self._client = instructor.from_openai(raw_client)
+        self._client = instructor.from_openai(raw_client, mode=mode)
         self._model = model
+        self._mode = mode
 
     async def chat_structured(
         self,
@@ -81,3 +87,19 @@ class InstructorClient:
     def model(self) -> str:
         """The configured model name."""
         return self._model
+
+    @property
+    def mode(self) -> instructor.Mode:
+        """The configured instructor structured-output mode."""
+        return self._mode
+
+
+def _coerce_instructor_mode(mode: str | instructor.Mode) -> instructor.Mode:
+    """Convert an env-friendly mode string to ``instructor.Mode``."""
+    if isinstance(mode, instructor.Mode):
+        return mode
+    mode_name = mode.upper()
+    try:
+        return getattr(instructor.Mode, mode_name)
+    except AttributeError as exc:
+        raise ValueError(f"Unsupported instructor mode: {mode}") from exc

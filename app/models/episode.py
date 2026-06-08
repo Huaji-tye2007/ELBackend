@@ -20,16 +20,21 @@ class Mark(BaseModel):
     """A vocabulary mark anchoring a target word to its position in message text.
 
     Attributes:
+        item_id: Stable backend vocabulary item id. Frontend should send this
+            id back in reading logs so learning state can be updated without
+            re-resolving surface forms through lemma lookup.
         word: Surface form as it appears in the text (e.g. "consuming", not lemma "consume").
         index: 0-based word index by split(" ") — NOT character offset.
         definition: Chinese definition matching the context.
-        is_new: True if this (word, definition) pair is first-seen in the whole work.
+        is_new: True if this item_id is first-seen in the whole work.
     """
 
+    item_id: str | None = None
     word: str
     index: int = Field(ge=0)
     definition: str
     is_new: bool
+    lemma: str | None = Field(default=None, exclude=True)
 
 
 class NarrationMessage(BaseModel):
@@ -58,11 +63,12 @@ class DialogueMessage(BaseModel):
 
 
 class VocabEntry(BaseModel):
-    """A deduplicated (word, definition) pair for the episode-end vocab panel.
+    """A deduplicated vocabulary item for the episode-end vocab panel.
 
     Derived from marks across all messages for frontend convenience.
     """
 
+    item_id: str | None = None
     word: str
     definition: str
     is_new: bool

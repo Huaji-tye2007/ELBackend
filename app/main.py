@@ -40,11 +40,25 @@ async def lifespan(app: FastAPI):
     """
     # ── Startup ─────────────────────────────────────────────────────────
     try:
-        from app.core.dependencies import get_arc_generation_manager
+        from app.core.dependencies import (
+            get_arc_generation_manager,
+            get_chapter_db_storage,
+            get_progress,
+            get_user_vocab,
+        )
 
         mgr = get_arc_generation_manager()
         app.state.arc_manager = mgr
         await mgr.resume_on_startup()
+        state = await mgr.get_status()
+        if state.phase not in ("IDLE", "COMPLETE", "FAILED"):
+            chapter_db = get_chapter_db_storage().load()
+            await mgr.resume_pipeline(
+                user_id="default",
+                progress=get_progress(),
+                chapters=chapter_db.chapters,
+                user_vocab=get_user_vocab(),
+            )
     except ImportError:
         # ArcGenerationManager not yet implemented — safe to ignore
         pass

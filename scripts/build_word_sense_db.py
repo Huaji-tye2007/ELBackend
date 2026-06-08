@@ -26,7 +26,7 @@ ECDICT_DB_PATH = CACHE_DIR / "ecdict.db"
 
 OUTPUT_PATH = DATA_DIR / "WordSenseDB.json"
 
-TARGET_TAGS = ("cet4", "cet6", "ky", "ielts", "toefl", "gk")
+TARGET_TAGS = ("cet4", "cet6", "ky", "ielts", "toefl", "gk",'zk','')
 MAX_WORDS = 10000
 
 # 非标准词过滤：含引号/空格/点号/短横的词
@@ -150,9 +150,6 @@ def build():
 
         seen.add(word)
         entries[word] = senses
-
-        if len(entries) >= MAX_WORDS:
-            break
 
     conn.close()
 

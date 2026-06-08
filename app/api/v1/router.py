@@ -43,9 +43,10 @@ except ImportError:
 
 # ── Reading ────────────────────────────────────────────────────────────
 
-from app.api.v1.reading import router as reading_router  # noqa: E402
+from app.api.v1.reading import progress_router, router as reading_router  # noqa: E402
 
 router.include_router(reading_router)
+router.include_router(progress_router)
 
 # ── Dictionary ─────────────────────────────────────────────────────────
 

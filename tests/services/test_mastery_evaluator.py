@@ -150,6 +150,24 @@ class TestEmptyAndEdge:
         out = result.vocab_index["a"]
         assert out.history_window == [0, 0, 0, 0, 0]  # untouched
 
+    def test_evaluate_with_stats_counts_unique_known_items(self) -> None:
+        """evaluate_with_stats reports unique known item_ids actually updated."""
+        item = _vocab_item("a", history_window=[0, 0, 0, 0, 0])
+        uv = _user_vocab(item)
+        log = _episode_log(
+            _word_log("a", appeared=1, clicked=0),
+            _word_log("a", appeared=2, clicked=1),
+            _word_log("missing", appeared=1, clicked=0),
+        )
+        evaluator = MasteryEvaluator()
+        evaluator._scheduler.review_card = mock.MagicMock(
+            return_value=_mock_review_return()
+        )
+
+        _result, updated_count = evaluator.evaluate_with_stats(log, uv)
+
+        assert updated_count == 1
+
     def test_unaffected_items_unchanged(self) -> None:
         """Items not referenced in word_logs remain completely unchanged."""
         item_a = _vocab_item("a", history_window=[1, 0, 1, 0, 0])

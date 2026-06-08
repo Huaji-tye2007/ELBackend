@@ -17,12 +17,16 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, Callable
 
+from dotenv import load_dotenv
+
 from app.core.exceptions import ECDictUnavailableError
 from app.db.storage import JSONStorage
 from app.llm.client import InstructorClient
 from app.models.chapter import ChapterDB
 from app.models.vocabulary import UserVocabulary
 from app.models.word_sense import WordSenseDB
+
+load_dotenv()
 
 
 # ════════════════════════════════════════════════════════════════
@@ -53,12 +57,15 @@ class Settings:
     openai_model: str = "deepseek-v4-flash"
     """Model name for structured-output calls."""
 
+    instructor_mode: str = "JSON"
+    """Instructor structured-output mode. JSON avoids tool_choice for thinking models."""
+
     @classmethod
     def from_env(cls) -> Settings:
         """Construct Settings from environment variables with sensible defaults.
 
         Env vars: ``DATA_DIR``, ``ECDICT_DB_PATH``, ``LLM_BASE_URL``,
-        ``LLM_API_KEY``, ``LLM_MODEL``.
+        ``LLM_API_KEY``, ``LLM_MODEL``, ``LLM_INSTRUCTOR_MODE``.
         """
         return cls(
             data_dir=Path(os.getenv("DATA_DIR", "data")),
@@ -66,6 +73,7 @@ class Settings:
             openai_base_url=os.getenv("LLM_BASE_URL", "http://localhost:11434/v1"),
             openai_api_key=os.getenv("LLM_API_KEY", ""),
             openai_model=os.getenv("LLM_MODEL", "deepseek-v4-flash"),
+            instructor_mode=os.getenv("LLM_INSTRUCTOR_MODE", "JSON"),
         )
 
 
@@ -94,6 +102,7 @@ def get_llm_client() -> InstructorClient:
         base_url=settings.openai_base_url,
         api_key=settings.openai_api_key,
         model=settings.openai_model,
+        instructor_mode=settings.instructor_mode,
     )
 
 
@@ -112,7 +121,9 @@ def get_ecdict_db() -> sqlite3.Connection:
     path = settings.ecdict_db_path
     if not path.exists():
         raise ECDictUnavailableError(f"ECDICT database not found at {path}")
-    return sqlite3.connect(str(path))
+    conn = sqlite3.connect(str(path))
+    conn.row_factory = sqlite3.Row
+    return conn
 
 
 # ════════════════════════════════════════════════════════════════

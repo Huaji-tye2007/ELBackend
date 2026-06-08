@@ -106,6 +106,7 @@ class TestSettings:
             assert s.openai_base_url == "http://localhost:11434/v1"
             assert s.openai_api_key == ""
             assert s.openai_model == "deepseek-v4-flash"
+            assert s.instructor_mode == "JSON"
 
     def test_custom_env_values(self) -> None:
         """Custom environment variables should override defaults."""
@@ -118,6 +119,7 @@ class TestSettings:
                 "LLM_BASE_URL": "https://api.example.com/v1",
                 "LLM_API_KEY": "sk-test",
                 "LLM_MODEL": "gpt-4",
+                "LLM_INSTRUCTOR_MODE": "TOOLS",
             },
             clear=True,
         ):
@@ -127,6 +129,7 @@ class TestSettings:
             assert s.openai_base_url == "https://api.example.com/v1"
             assert s.openai_api_key == "sk-test"
             assert s.openai_model == "gpt-4"
+            assert s.instructor_mode == "TOOLS"
 
     def test_frozen_dataclass(self) -> None:
         """Settings should be immutable (frozen)."""
@@ -166,6 +169,7 @@ class TestGetSettings:
             "openai_base_url",
             "openai_api_key",
             "openai_model",
+            "instructor_mode",
         ):
             assert hasattr(s, attr), f"Missing attribute: {attr}"
 
@@ -201,6 +205,17 @@ class TestGetLLMClient:
         ):
             client = get_llm_client()
             assert client.model == "custom-model"
+
+    def test_client_uses_configured_instructor_mode(self) -> None:
+        """The client's instructor mode should match LLM_INSTRUCTOR_MODE env var."""
+        _clear_all_caches()
+        with mock.patch.dict(
+            os.environ,
+            {"LLM_INSTRUCTOR_MODE": "TOOLS", "LLM_API_KEY": "sk-test"},
+            clear=True,
+        ):
+            client = get_llm_client()
+            assert client.mode.name == "TOOLS"
 
 
 # ── ECDICT Database ───────────────────────────────────────────────────
@@ -576,8 +591,10 @@ class TestSingletonCaching:
     def test_cached_instances_are_identical(self, factory, name) -> None:  # noqa: ARG002
         """All stateful factories must return the same object on repeat calls."""
         _clear_all_caches()
-        with mock.patch.dict(os.environ, {"LLM_API_KEY": "sk-test"}, clear=True), \
-             _mock_vocab_storage():
+        with (
+            mock.patch.dict(os.environ, {"LLM_API_KEY": "sk-test"}, clear=True),
+            _mock_vocab_storage(),
+        ):
             inst1 = factory()
             inst2 = factory()
             assert inst1 is inst2, (
@@ -606,6 +623,7 @@ class TestEdgeCases:
             assert s.openai_model == "deepseek-v4-flash"
             assert s.openai_base_url == "http://localhost:11434/v1"
             assert s.ecdict_db_path == Path("asset/ecdict_mobile.db")
+            assert s.instructor_mode == "JSON"
 
     def test_storage_does_not_create_file(self, tmp_path: Path) -> None:
         """Storage factory should not create files — only storage.load() or .save() does."""

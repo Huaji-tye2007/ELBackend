@@ -14,6 +14,7 @@ from app.core.dependencies import (
     get_user_vocab,
 )
 from app.core.exceptions import GenerationConflictError
+from app.models.chapter import ChapterDB
 from app.models.arc_generation import ArcGenerationState
 
 router = APIRouter(prefix="/arc", tags=["arc"])
@@ -36,14 +37,24 @@ async def generate_arc(
     Frontend should poll GET /arc/status for progress updates.
     """
     try:
+        chapter_db: ChapterDB = chapters.load()
+        if not chapter_db.chapters:
+            raise HTTPException(
+                status_code=400, detail="No chapter data found — upload novel first"
+            )
+
         result = await arc_manager.start_generation(
             arc_id=request.arc_id,
             user_vocab=user_vocab,
             progress=progress,
-            chapters=chapters.load(),
+            chapters=chapter_db.chapters,
         )
     except GenerationConflictError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except FileNotFoundError as exc:
+        raise HTTPException(
+            status_code=404, detail="No chapter data found — upload novel first"
+        ) from exc
 
     return ArcGenerateResponse(
         job_id=result["job_id"],

@@ -44,11 +44,21 @@ class TestMark:
     """
 
     def test_valid_new(self) -> None:
-        mark = Mark(word="bank", index=1, definition="银行", is_new=True)
+        mark = Mark(
+            item_id="bank_finance",
+            word="bank",
+            index=1,
+            definition="银行",
+            is_new=True,
+            lemma="bank",
+        )
+        dumped = mark.model_dump()
         assert mark.word == "bank"
         assert mark.index == 1
         assert mark.definition == "银行"
         assert mark.is_new is True
+        assert dumped["item_id"] == "bank_finance"
+        assert "lemma" not in dumped
 
     def test_valid_review(self) -> None:
         mark = Mark(word="footstep", index=0, definition="脚步", is_new=False)

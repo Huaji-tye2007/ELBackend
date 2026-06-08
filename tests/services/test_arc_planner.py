@@ -368,9 +368,7 @@ class TestArcPlannerSkeleton:
 class TestExtractSourceText:
     """TDD tests for _extract_source_text — walks chapters, slices text."""
 
-    def test_extract_from_chapter_start(
-        self, sample_chapters: list[Chapter]
-    ) -> None:
+    def test_extract_from_chapter_start(self, sample_chapters: list[Chapter]) -> None:
         """Extract a slice from the beginning of a chapter."""
         from app.services.arc_planner import ArcPlanner  # noqa: E402
 
@@ -386,9 +384,7 @@ class TestExtractSourceText:
         assert end_ch == 1  # all within chapter 1
         assert end_off == 500  # extracted exactly 500 words
 
-    def test_extract_from_mid_chapter(
-        self, sample_chapters: list[Chapter]
-    ) -> None:
+    def test_extract_from_mid_chapter(self, sample_chapters: list[Chapter]) -> None:
         """Extract starting from a non-zero word offset."""
         from app.services.arc_planner import ArcPlanner  # noqa: E402
 
@@ -459,9 +455,7 @@ class TestExtractSourceText:
         assert end_ch == 2
         assert end_off == 874
 
-    def test_extract_skip_to_next_chapter(
-        self, sample_chapters: list[Chapter]
-    ) -> None:
+    def test_extract_skip_to_next_chapter(self, sample_chapters: list[Chapter]) -> None:
         """Extract text that starts mid-chapter and needs one full skip."""
         from app.services.arc_planner import ArcPlanner  # noqa: E402
 
@@ -1127,9 +1121,7 @@ class TestEndPositionTracking:
 class TestPlanNextArcIntegration:
     """Integration tests for plan_next_arc."""
 
-    def test_plan_next_arc_happy_path(
-        self, sample_chapters: list[Chapter]
-    ) -> None:
+    def test_plan_next_arc_happy_path(self, sample_chapters: list[Chapter]) -> None:
         """plan_next_arc returns (ArcPlan, int, int) tuple for first arc."""
         from app.services.arc_planner import ArcPlanner  # noqa: E402
 

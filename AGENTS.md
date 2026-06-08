@@ -20,7 +20,7 @@
 
 - **`documents/BACKEND_IN_OUT.md` §6 `FormatSpec.json` 已作废**。该节红字标注"以许家旗的为准，不要看这个"——许家旗版即根目录的 `documents/format_spec_json.md`。实现 `Episode Formatter` / `Vocabulary Annotator` / 任何前端消费格式相关代码时，**只读 `documents/format_spec_json.md`**，忽略 §6。
 - `documents/BACKEND_IN_OUT.md` §4 `Vocabulary Scheduler`：设计已冻结 (2026-06-06)，详见 `documents/BACKEND_IN_OUT.md` §四.4。
-- `documents/BACKEND_IN_OUT.md` 与 `documents/format_spec_json.md` 对 lemma / 表层形式描述基本一致，但**以 `documents/format_spec_json.md` §"词形匹配" 为最终口径**（指定了 ECDICT 方案）。
+- `documents/BACKEND_IN_OUT.md` 与 `documents/format_spec_json.md` 对 lemma / 表层形式的旧描述可能仍有遗留；当前后端口径是 **item_id-first**：后端更新 FSRS/history_window 时优先按 `item_id` 管理；前端可继续既有 lemma 方案，但 reading log 需带回 `item_id` 供后端使用。
 
 ## 3. Python 环境（Windows / PowerShell）
 
@@ -56,8 +56,9 @@
 ## 6. 关键命名/概念约定
 
 ### 学习对象
-- **追踪单位是 `(word, sense)` 对**，不是单词本身。`bank=河岸` 与 `bank=银行` 是两个独立 `VocabularyItem`，各有独立 `item_id`（如 `issue_problem` / `issue_topic`）。多义词通过 `WordSenseDB` 拆分。
-- **`is_new` 判定**：`fsrs_card.last_review == null` 且该 `item_id` 在本集尚未出现过。Annotator 需维护集内 `shown_in_this_episode` 集合。
+- **后端学习状态的唯一主键是 `item_id`**。追踪单位仍是用户词表里的一个 `VocabularyItem`（本质是一个词义学习对象），不是单词表层形式，也不再把 lemma 作为状态主键。
+- **多义词必须拆成多个 `item_id`**：`bank=河岸` 与 `bank=银行` 是两个独立 `VocabularyItem`，各有独立 FSRS card / history_window。
+- **`is_new` 判定**：`fsrs_card.last_review == null` 且该 `item_id` 在本集尚未出现过。Annotator 需维护集内 `shown_in_this_episode: set[item_id]`。
 - **FSRS Card**：`fsrs_card` 内嵌对象与 `fsrs` 库的 `Card` 字段一一对应，可 `Card(**fsrs_card)` 还原。
 
 ### FormatSpec（消费端输出，以 `documents/format_spec_json.md` 为准）
@@ -66,24 +67,29 @@
 - `messages[i].type`：`"narration"` 或 `"dialogue"`。`narration` 涵盖所有非对话（动作 / 描写 / 内心）。
 - **`dialogue.side` 语义固定**：`"right"` = 主角侧；`"left"` = 其他角色。**不要颠倒**。
 - **`marks.index` 是按空格分词的 0-based 词索引**——例如 `"The bank said"` 中 `"bank"` 的 `index = 1`。**不是字符 offset**。Annotator 实现按 `text.split(" ")` 切分定位。
-- **`marks.word` 存表层形式**（屈折形态，如 `"consuming"` / `"consumed"`），不是 lemma。
-- **学习状态全部按 lemma 维度管理**（is_new、M 计数、FSRS card），不按表层形式。
-- **表层→Lemma→item_id 全链路**：
-  1. **StoryRewriter** 产出文本（含表层形式，不做 lemma 标注）
-  2. **VocabularyAnnotator** 定位目标词 → ECDICT 查 lemma → (lemma, meaning) 查 item_id → 填 marks.word=表层, marks.is_new=按 item_id 判定
-  3. **ReadingTracker** 收到点击事件 → 同样 ECDICT + meaning 映射到 item_id → 记录 behavior
-  4. **MasteryEvaluator** 按 item_id 更新 FSRS card（隐式反馈→history_window→Rating→review_card→强制跨天）
-  全程 lemma 映射唯一途径：ECDICT（`asset/ecdict_mobile.db`），**禁用**任何外部 lemmatizer。
-- `vocab` 数组可由 `messages[].marks` 推导，写出来仅为方便前端。
+- **`marks.item_id` 对前端输出**：前端阅读日志需带回该字段，后端据此直接更新学习状态，避免 `word + meaning + lemma` 二次解析。前端自身可继续既有 lemma / 词形逻辑。
+- **`marks.word` 存表层形式**（屈折形态，如 `"consuming"` / `"consumed"`），不是状态主键。
+- **学习状态全部按 `item_id` 管理**（is_new、history_window、FSRS card），不按表层形式，也不按 lemma。
+- **item_id-first 全链路**：
+  1. **VocabularyScheduler** 从 `UserVocabulary` 选出 `TargetWord(item_id, word, meaning, is_new)`。
+  2. **StoryRewriter** 按 `item_id` 使用目标词，并返回成功使用的 `target_words_used: list[item_id]`。
+  3. **VocabularyAnnotator** 用 `item_id → VocabularyItem` 取得 meaning / FSRS 状态，定位文本中的表层形式后填 `marks.item_id`、`marks.word`、`marks.is_new`。
+  4. **Frontend** 渲染时使用 `marks.word/index/definition/is_new`，可继续既有 lemma 逻辑；上报阅读日志时回传对应 `item_id`。
+  5. **ReadingTracker / MasteryEvaluator** 直接按 `item_id` 记录行为并更新 FSRS card。
+- `vocab` 数组可由 `messages[].marks` 推导，写出来仅为方便前端；若由后端生成，应同步携带 `item_id`。
 
 ### 词形还原（ECDICT 方案，强制）
 - 唯一数据源：`asset/ecdict_mobile.db`（SQLite，**需用户提供**，目前不在仓库）。
-- 流程：遇到表层形式（如 `"went"`）→ 查 ECDICT 词条 → 若 `exchange` 字段含 `0:<lemma>`（如 `0:go`）则取该 lemma → 用 lemma 在 `UserVocabulary` 里查 `item_id`。
+- ECDICT 不再是学习状态主链路，只用于：
+  - 词表上传预处理时辅助判断 headword/forms。
+  - Annotator 在 rewriter 未返回明确 surface 时做表层词定位兜底。
+  - 兼容旧前端未上报 `item_id`、只上报 `word + meaning` 的日志。
+- 兼容流程：遇到表层形式（如 `"went"`）→ 查 ECDICT 词条 → 若 `exchange` 字段含 `0:<lemma>`（如 `0:go`）则取该 lemma → 用 `(lemma, meaning)` 在 `UserVocabulary` 里兜底查 `item_id`。
 - 若 `exchange` 为空或词条不存在，表层形式本身即原形。
 - **禁止**调用任何外部 lemmatizer 库。
 - 在内存建两个索引（加载时一次性构建）：
   - `vocab_index: item_id → VocabularyItem`（O(1) 查项）
-  - `lemma_index: (lemma, meaning) → item_id`（O(1) 复合键 → 学习对象）。对于非多义词 meaning 可省略；对于多义词（如 bank=河岸 / bank=银行），meaning 字段用于从同一 lemma 的多个 item_id 中精确定位。具体实现待 ECDICT 存储格式调研后确定。
+  - `lemma_index: (lemma, meaning) → item_id`（仅兼容旧日志和兜底解析；新链路不得依赖它作为状态主键）。
 
 ## 7. 运行 / 开发命令
 
@@ -234,7 +240,7 @@ ELBackend/
 | GET    | `/episode/{episode_id}`        | –                                     | `Episode`（FormatSpec v3）            | 前端消费的剧集 JSON                    |
 | GET    | `/episode/cache/status`        | –                                     | `{cached_count, latest_episode_id}`   | Episode Cache 状态                     |
 | GET    | `/progress`                    | –                                     | `ReadingProgress`                     | 当前阅读进度                           |
-| POST   | `/reading/log`                 | `EpisodeReadingLog`                   | `{updated: bool}`                     | 上报阅读行为（点击/出现）              |
+| POST   | `/reading/log`                 | `{episode_id, word_logs: [{item_id, appeared, clicked}]}` | `{updated: bool}`                     | 上报阅读行为（点击/出现）；`word+meaning` 仅兼容旧前端 |
 | POST   | `/reading/finish`              | `{episode_id}`                        | `{vocab_updated_count: int}`          | 完成一集，触发 Mastery Evaluator       |
 | GET    | `/dictionary/{word}`           | –                                     | `{word, meaning, examples?: []}`      | 查词（用于 marks 点击展开）            |
 | POST   | `/arc/generate`                | `{arc_id?: str}`                      | `{job_id, status: "queued"}` 或 `409` | 手动触发 Arc 生成（详见 §14）          |
@@ -331,13 +337,13 @@ ELBackend/
 | 文件                           | 模型                                                                           | 关键约束                                                                                                                                                                                                                                                                                |
 | ------------------------------ | ------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `app/models/fsrs.py`           | `FsrsCard`                                                                     | `card_id: int`（毫秒时间戳）、`state: int` ∈ {1,2,3}、`stability/difficulty: float \| None`、`due: datetime`、`last_review: datetime \| None`                                                                                                                                           |
-| `app/models/vocabulary.py`     | `VocabularyItem`、`UserVocabulary`                                             | `id`、`word`（lemma）、`meaning`、`chapter_first_seen: int = Field(ge=1)`、`history_window: list[int]`、`fsrs_card: FsrsCard`                                                                                                                                                           |
+| `app/models/vocabulary.py`     | `VocabularyItem`、`UserVocabulary`                                             | `id`（学习状态唯一主键）、`word`（用户词表/headword 展示词）、`meaning`、`chapter_first_seen: int = Field(ge=1)`、`history_window: list[int]`、`fsrs_card: FsrsCard`                                                                                                                        |
 | `app/models/word_sense.py`     | `WordSense`、`WordSenseDB`                                                     | `dict[word, {is_polysemous: bool, senses: list[{id, meaning}]}]`                                                                                                                                                                                                                        |
 | `app/models/chapter.py`        | `Chapter`、`ChapterDB`                                                         | `chapter_id`、`title`、`raw_text`、`summary`、`characters: list[str]`、`world_setting`、`estimated_reading_time: int`                                                                                                                                                                   |
 | `app/models/progress.py`       | `ReadingProgress`                                                              | `current_chapter`、`current_episode`、`chapter_offset: float = Field(ge=0, le=1)`、`total_episodes_read: int = Field(ge=0)`                                                                                                                                                             |
-| `app/models/episode_log.py`    | `WordLog`、`EpisodeReadingLog`                                                 | `word_logs: list[{item_id, appeared: int, clicked: int}]`                                                                                                                                                                                                                               |
+| `app/models/episode_log.py`    | `WordLog`、`EpisodeReadingLog`                                                 | `word_logs: list[{item_id, appeared: int, clicked: int}]`；`word`/`meaning` 字段只作旧前端兼容兜底                                                                                                                                                                                        |
 | `app/models/arc_plan.py`       | `PendingWord`、`EpisodeSlot`、`ArcPlan`                                        | `arc_id`、`pending_words`、`episodes: list[EpisodeSlot]`，`EpisodeSlot.episode_type: Literal["main","side"]`                                                                                                                                                                            |
-| `app/models/episode.py`        | `Meta`、`NarrationMessage`、`DialogueMessage`、`Mark`、`VocabEntry`、`Episode` | `Meta.kind: Literal["main","side"]`、`Mark.index: int = Field(ge=0)`（**按空格分词的词索引**）、`Mark.word: str`（**表层形式**）、`DialogueMessage.side: Literal["left","right"]`（**right=主角**）                                                                                     |
+| `app/models/episode.py`        | `Meta`、`NarrationMessage`、`DialogueMessage`、`Mark`、`VocabEntry`、`Episode` | `Meta.kind: Literal["main","side"]`、`Mark.item_id`（前端回传用主键）、`Mark.index: int = Field(ge=0)`（**按空格分词的词索引**）、`Mark.word: str`（**表层形式**）、`DialogueMessage.side: Literal["left","right"]`（**right=主角**）                                                        |
 | `app/models/arc_generation.py` | `ArcGenerationState`                                                           | `arc_id: str`、`phase: Literal["IDLE","PLANNING","SCHEDULING","GENERATING","ANNOTATING","FORMATTING","COMPLETE","FAILED"]`、`progress: {current: int, total: int}`、`retry_count: int = Field(ge=0)`、`last_error: str \| None`、`started_at: datetime \| None`、`updated_at: datetime` |
 
 **约束强制点**：
@@ -356,6 +362,7 @@ def lookup_lemma(surface: str, db: sqlite3.Connection) -> str: ...
 - 查 `asset/ecdict_mobile.db` 的 `exchange` 字段，找到 `0:<lemma>` 则返回 lemma
 - 若 db 不存在 → 抛 `ECDictUnavailableError`，由路由层翻译为 HTTP 503
 - 若 word 不在词典或无 `0:` 标记 → 返回 surface 本身
+- 新链路不得用该函数作为学习状态主键解析；优先使用前端回传的 `item_id`。该函数只用于词形辅助、查词和旧日志兼容。
 - **禁止**调用任何外部 lemmatizer（NLTK / spaCy / pyinflect / lemminflect）
 
 ### `app/utils/word_index.py` — 词索引定位
@@ -595,6 +602,7 @@ IDLE
 ### 16.6 关键约束的显式断言（强制）
 
 - **`marks.index` 测试**：必须断言 `text.split(" ")[mark.index] == mark.word` —— 验证按空格分词的词索引语义
+- **`marks.item_id` 测试**：Annotator/Formatter/API 必须覆盖 `item_id` 对前端输出，并验证 ReadingTracker 可直接按 `item_id` 上报
 - **`marks.word` 测试**：必须至少一个表层形式案例（如 `"consuming"` 而非 lemma `"consume"`）
 - **`dialogue.side` 测试**：必须断言 `side="right"` 对应主角，`side="left"` 对应其他角色
 

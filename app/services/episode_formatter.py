@@ -96,20 +96,42 @@ class EpisodeFormatter:
     ) -> list[VocabEntry]:
         """Build the vocab array from all messages' marks.
 
-        Deduplicates by ``(word, definition)``. If any mark for a given
-        ``(word, definition)`` pair has ``is_new=True``, the vocab entry
-        is marked ``is_new=True``.
+        Deduplicates by learning object when available (``item_id`` from
+        VocabularyAnnotator), falling back to ``(lemma, definition)`` and then
+        ``(word, definition)`` for manually supplied marks. If any mark for a
+        given object has ``is_new=True``, the vocab entry is marked new.
         """
-        seen: dict[tuple[str, str], bool] = {}
+        seen: dict[tuple[str, str], tuple[str | None, str, str, bool]] = {}
 
         for msg in messages:
             for mark in msg.marks:
-                key = (mark.word, mark.definition)
-                seen[key] = seen.get(key, False) or mark.is_new
+                if mark.item_id:
+                    key = ("item_id", mark.item_id)
+                elif mark.lemma:
+                    key = ("lemma", f"{mark.lemma.lower()}::{mark.definition}")
+                else:
+                    key = ("surface", f"{mark.word.lower()}::{mark.definition}")
+
+                previous = seen.get(key)
+                if previous is None:
+                    seen[key] = (
+                        mark.item_id,
+                        mark.word,
+                        mark.definition,
+                        mark.is_new,
+                    )
+                else:
+                    item_id, word, definition, is_new = previous
+                    seen[key] = (item_id, word, definition, is_new or mark.is_new)
 
         return [
-            VocabEntry(word=word, definition=definition, is_new=is_new)
-            for (word, definition), is_new in seen.items()
+            VocabEntry(
+                item_id=item_id,
+                word=word,
+                definition=definition,
+                is_new=is_new,
+            )
+            for item_id, word, definition, is_new in seen.values()
         ]
 
     # ── Message validation ────────────────────────────────

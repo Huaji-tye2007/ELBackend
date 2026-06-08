@@ -78,9 +78,13 @@ async def get_vocabulary_item(
         vocab = storage.load()
         return vocab.vocab_index[item_id]
     except KeyError:
-        raise HTTPException(status_code=404, detail=f"Vocabulary item {item_id!r} not found")
+        raise HTTPException(
+            status_code=404, detail=f"Vocabulary item {item_id!r} not found"
+        )
     except FileNotFoundError:
-        raise HTTPException(status_code=404, detail=f"Vocabulary item {item_id!r} not found")
+        raise HTTPException(
+            status_code=404, detail=f"Vocabulary item {item_id!r} not found"
+        )
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 

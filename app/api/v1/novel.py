@@ -6,45 +6,32 @@ Exception translation: AGENTS.md §15.2.
 
 from __future__ import annotations
 
-from pathlib import Path
-
 from fastapi import APIRouter, Body, Depends
 
+from app.core.dependencies import (
+    get_chapter_db_storage as get_configured_chapter_storage,
+    get_novel_preprocessor as get_configured_novel_preprocessor,
+)
 from app.core.exceptions import NotFoundError
 from app.db.storage import JSONStorage
 from app.models.chapter import Chapter, ChapterDB
 
 router = APIRouter(prefix="/novel", tags=["novel"])
 
-# ── Storage path ──────────────────────────────────────────────────────────
-
-CHAPTER_DB_PATH = Path("data/ChapterDB.json")
-
-
 # ── Dependencies ──────────────────────────────────────────────────────────
 
 
 def get_chapter_storage() -> JSONStorage[ChapterDB]:
     """Provide JSON storage for ChapterDB."""
-    return JSONStorage(CHAPTER_DB_PATH, ChapterDB)
+    return get_configured_chapter_storage()
 
 
 def get_novel_preprocessor():
-    """Provide a NovelPreprocessor instance (lazy-imported with LLM client).
-
-    Raises:
-        NotFoundError: If the LLM client or preprocessor cannot be imported.
-    """
+    """Provide a NovelPreprocessor instance from the central DI layer."""
     try:
-        from app.core.config import get_llm_config
-        from app.llm.client import InstructorClient
-        from app.services.novel_preprocessor.preprocessor import NovelPreprocessor
+        return get_configured_novel_preprocessor()
     except ImportError as exc:
         raise NotFoundError(f"NovelPreprocessor not available: {exc}") from exc
-
-    config = get_llm_config()
-    llm_client = InstructorClient(**config)
-    return NovelPreprocessor(llm_client)
 
 
 # ── Routes ────────────────────────────────────────────────────────────────

@@ -34,7 +34,9 @@ def _make_narration(text: str, marks: list[dict] | None = None) -> dict:
     }
 
 
-def _make_dialogue(side: str, name: str, text: str, marks: list[dict] | None = None) -> dict:
+def _make_dialogue(
+    side: str, name: str, text: str, marks: list[dict] | None = None
+) -> dict:
     """Build a dialogue message dict."""
     return {
         "type": "dialogue",
@@ -150,7 +152,9 @@ def test_mark_word_is_surface_form(formatter: EpisodeFormatter):
     messages = [
         _make_narration(
             text,
-            marks=[{"word": "consuming", "index": 2, "definition": "消耗", "is_new": True}],
+            marks=[
+                {"word": "consuming", "index": 2, "definition": "消耗", "is_new": True}
+            ],
         )
     ]
     episode = formatter.format_episode(meta, messages)
@@ -218,6 +222,46 @@ def test_derive_vocab_empty_when_no_marks(formatter: EpisodeFormatter):
     episode = formatter.format_episode(meta, messages, vocab=None)
 
     assert episode.vocab == []
+
+
+def test_derive_vocab_deduplicates_by_item_id(formatter: EpisodeFormatter):
+    """Different surface forms for the same item_id should produce one vocab entry."""
+    meta = {"ep": 9, "title": "Lemma Vocab", "kind": "main"}
+    messages = [
+        _make_narration(
+            "She consumed it.",
+            marks=[
+                {
+                    "word": "consumed",
+                    "index": 1,
+                    "definition": "消耗",
+                    "is_new": True,
+                    "item_id": "consume_1",
+                    "lemma": "consume",
+                }
+            ],
+        ),
+        _make_narration(
+            "They were consuming time.",
+            marks=[
+                {
+                    "word": "consuming",
+                    "index": 2,
+                    "definition": "消耗",
+                    "is_new": False,
+                    "item_id": "consume_1",
+                    "lemma": "consume",
+                }
+            ],
+        ),
+    ]
+
+    episode = formatter.format_episode(meta, messages)
+
+    assert len(episode.vocab) == 1
+    assert episode.vocab[0].item_id == "consume_1"
+    assert episode.vocab[0].word == "consumed"
+    assert episode.vocab[0].is_new is True
 
 
 # ============================================================================

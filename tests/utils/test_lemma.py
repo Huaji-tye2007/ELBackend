@@ -46,9 +46,13 @@ class TestLookupLemma:
         """Word with empty/None exchange returns the surface form."""
         # Use a word that exists but has no exchange field value
         # "the" likely has empty exchange in ECDICT
-        row = ecdict_db.execute("SELECT exchange FROM dict WHERE word = 'the'").fetchone()
+        row = ecdict_db.execute(
+            "SELECT exchange FROM dict WHERE word = 'the'"
+        ).fetchone()
         if row and row[0]:
-            pytest.skip("'the' has a non-empty exchange field — test needs a word with empty exchange")
+            pytest.skip(
+                "'the' has a non-empty exchange field — test needs a word with empty exchange"
+            )
         result = lookup_lemma("the", ecdict_db)
         assert result == "the"
 

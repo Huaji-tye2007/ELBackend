@@ -14,7 +14,6 @@ import os
 import sqlite3
 from pathlib import Path
 
-from app.core.exceptions import ECDictUnavailableError
 from app.models.episode_log import EpisodeReadingLog
 from app.models.progress import ReadingProgress
 from app.utils.atomic_io import atomic_write_json
@@ -126,11 +125,12 @@ class ReadingTracker:
 
         Mutates ``log.word_logs`` in-place.
         """
-        if self._ecdict_db is None:
+        needs_resolution = [wl for wl in log.word_logs if not wl.item_id and wl.word]
+        if not needs_resolution:
             return
 
-        # Type-narrow for static checker — guarded above
-        db: sqlite3.Connection = self._ecdict_db
+        if self._ecdict_db is None:
+            raise ValueError("ECDICT database is required when word logs omit item_id")
 
         from app.models.vocabulary import UserVocabulary
 
@@ -141,10 +141,12 @@ class ReadingTracker:
                 (self._data_dir / "UserVocabulary.json").read_text(encoding="utf-8")
             )
         except (FileNotFoundError, OSError):
-            logger.warning("UserVocabulary.json not found — cannot resolve item_ids")
-            return
+            raise ValueError(
+                "UserVocabulary.json is required when word logs omit item_id"
+            ) from None
 
         lemma_index = uv.lemma_index  # dict[(lemma, meaning), item_id]
+        unresolved: list[str] = []
 
         for wl in log.word_logs:
             if wl.item_id:
@@ -166,6 +168,11 @@ class ReadingTracker:
                     "Could not resolve item_id for surface %r — no matching vocabulary entry",
                     wl.word,
                 )
+                unresolved.append(wl.word)
+
+        if unresolved:
+            joined = ", ".join(sorted(set(unresolved)))
+            raise ValueError(f"Could not resolve item_id for word logs: {joined}")
 
     def _resolve_item_id(
         self,
@@ -181,7 +188,8 @@ class ReadingTracker:
         3. Otherwise: if exactly one entry for this lemma → auto-resolve.
         4. For polysemous words with no meaning hint, returns None.
         """
-        assert self._ecdict_db is not None  # caller guarantees ECDICT is set
+        if self._ecdict_db is None:
+            raise ValueError("ECDICT database is required to resolve word logs")
         lemma = lookup_lemma(surface, self._ecdict_db)
 
         if meaning:
@@ -192,8 +200,8 @@ class ReadingTracker:
         # Auto-resolve: exactly one lemma entry
         candidates = [
             item_id
-            for (l, _m), item_id in lemma_index.items()
-            if l.lower() == lemma.lower()
+            for (lemma_key, _meaning_key), item_id in lemma_index.items()
+            if lemma_key.lower() == lemma.lower()
         ]
         if len(candidates) == 1:
             return candidates[0]

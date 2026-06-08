@@ -918,4 +918,6 @@ class TestScheduleWithLLMClient:
 
         first_target_words = result["episodes"][0].get("target_words", [])
         assert len(first_target_words) > 0, "No target_words allocated"
-        assert mock_client.chat_structured.call_count >= 1, "LLM client was never called"
+        assert mock_client.chat_structured.call_count >= 1, (
+            "LLM client was never called"
+        )

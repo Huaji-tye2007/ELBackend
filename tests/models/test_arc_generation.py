@@ -32,6 +32,9 @@ class TestArcGenerationState:
         assert state.last_error is None
         assert state.started_at is not None
         assert state.updated_at is not None
+        dumped = state.model_dump()
+        assert "elapsed_seconds" in dumped
+        assert "estimated_remaining_seconds" in dumped
 
     def test_valid_failed_phase(self) -> None:
         """ArcGenerationState(phase='FAILED') should validate with last_error set."""

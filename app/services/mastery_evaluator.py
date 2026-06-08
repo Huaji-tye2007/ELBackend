@@ -55,18 +55,45 @@ class MasteryEvaluator:
             A new UserVocabulary with updated history_window and fsrs_card
             for each processed VocabularyItem. Unknown item_ids are skipped.
         """
+        updated_vocab, _updated_count = self.evaluate_with_stats(
+            episode_log, user_vocab, now
+        )
+        return updated_vocab
+
+    def evaluate_with_stats(
+        self,
+        episode_log: EpisodeReadingLog,
+        user_vocab: UserVocabulary,
+        now: datetime.datetime | None = None,
+    ) -> tuple[UserVocabulary, int]:
+        """Run the FSRS pipeline and return the updated vocabulary plus update count.
+
+        Args:
+            episode_log: Per-word appearance/click data for one episode.
+            user_vocab: Current vocabulary state.
+            now: Reference time for cross-day forcing. Defaults to UTC now.
+
+        Returns:
+            Tuple ``(updated_vocab, updated_count)`` where ``updated_count`` is
+            the number of unique known item_ids actually processed.
+        """
         if now is None:
             now = datetime.datetime.now(datetime.timezone.utc)
 
         vocab_index = user_vocab.vocab_index
         updated_items: list[VocabularyItem] = list(user_vocab.vocabulary)
+        updated_ids: set[str] = set()
 
         for word_log in episode_log.word_logs:
-            self._process_one(word_log, vocab_index, updated_items, now)
+            if self._process_one(word_log, vocab_index, updated_items, now):
+                updated_ids.add(word_log.item_id)
 
-        return UserVocabulary(
-            user_id=user_vocab.user_id,
-            vocabulary=updated_items,
+        return (
+            UserVocabulary(
+                user_id=user_vocab.user_id,
+                vocabulary=updated_items,
+            ),
+            len(updated_ids),
         )
 
     # ------------------------------------------------------------------
@@ -79,7 +106,7 @@ class MasteryEvaluator:
         vocab_index: dict[str, VocabularyItem],
         updated_items: list[VocabularyItem],
         now: datetime.datetime,
-    ) -> None:
+    ) -> bool:
         """Apply the 7-step algorithm to a single word_log.
 
         Args:
@@ -92,7 +119,7 @@ class MasteryEvaluator:
         item = vocab_index.get(word_log.item_id)
         if item is None:
             logger.warning("Unknown item_id %s — skipping", word_log.item_id)
-            return
+            return False
 
         # Step 2: FIFO push to history_window
         # clicked=0 → push 1 (word appeared but user didn't click → recall success)
@@ -144,10 +171,11 @@ class MasteryEvaluator:
                         "fsrs_card": new_fsrs_card,
                     }
                 )
-                return
+                return True
 
         # Should not reach here — item was found in vocab_index
         logger.error(
             "Item %s found in vocab_index but not in updated_items list",
             word_log.item_id,
         )
+        return False

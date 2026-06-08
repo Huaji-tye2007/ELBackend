@@ -32,6 +32,17 @@ async def test_get_progress(client: AsyncClient) -> None:
     assert data["total_episodes_read"] == 0
 
 
+@pytest.mark.anyio
+async def test_get_progress_compat_route(client: AsyncClient) -> None:
+    """GET /api/v1/progress should remain available for the documented contract."""
+    response = await client.get("/api/v1/progress")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["current_chapter"] == 1
+    assert data["current_episode"] == 1
+
+
 # ---------------------------------------------------------------------------
 # POST /api/v1/reading/log
 # ---------------------------------------------------------------------------
@@ -113,7 +124,7 @@ async def test_finish_episode(
 
     assert response.status_code == 200
     data = response.json()
-    assert data["vocab_updated_count"] == 2  # seeded_storage_for_finish has 2 items
+    assert data["vocab_updated_count"] == 1
 
 
 @pytest.mark.anyio

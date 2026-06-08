@@ -120,6 +120,8 @@ class VocabularyAnnotator:
                             index=idx,
                             definition=item.meaning,
                             is_new=is_new,
+                            item_id=item.id,
+                            lemma=item.word,
                         )
                     )
 

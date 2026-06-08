@@ -14,6 +14,7 @@ from app.api.v1.schemas import (
 from app.core.dependencies import (
     get_mastery_evaluator,
     get_reading_tracker,
+    get_user_vocab_storage,
 )
 from app.db.storage import JSONStorage
 from app.models.episode_log import EpisodeReadingLog
@@ -23,21 +24,7 @@ from app.services.mastery_evaluator import MasteryEvaluator
 from app.services.reading_tracker import ReadingTracker
 
 router = APIRouter(prefix="/reading", tags=["reading"])
-
-
-# ---------------------------------------------------------------------------
-# Dependency stubs (will be migrated to app.core.dependencies — T18)
-# ---------------------------------------------------------------------------
-
-
-def get_user_vocabulary_storage() -> JSONStorage[UserVocabulary]:
-    """Return a JSONStorage[UserVocabulary] instance."""
-    from pathlib import Path
-
-    return JSONStorage(
-        path=Path("data/UserVocabulary.json"),
-        model=UserVocabulary,
-    )
+progress_router = APIRouter(tags=["reading"])
 
 
 # ---------------------------------------------------------------------------
@@ -46,6 +33,7 @@ def get_user_vocabulary_storage() -> JSONStorage[UserVocabulary]:
 
 
 @router.get("/progress", response_model=ReadingProgress)
+@progress_router.get("/progress", response_model=ReadingProgress)
 async def get_progress(
     tracker: ReadingTracker = Depends(get_reading_tracker),
 ) -> ReadingProgress:
@@ -67,7 +55,10 @@ async def log_reading(
     The request body carries per-word appearance counts and click events.
     The server stores them and updates progress counters.
     """
-    tracker.track(log)
+    try:
+        tracker.track(log)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return ReadingLogResponse(updated=True)
 
 
@@ -76,7 +67,7 @@ async def finish_episode(
     request: FinishEpisodeRequest,
     tracker: ReadingTracker = Depends(get_reading_tracker),
     evaluator: MasteryEvaluator = Depends(get_mastery_evaluator),
-    vocab_storage: JSONStorage[UserVocabulary] = Depends(get_user_vocabulary_storage),
+    vocab_storage: JSONStorage[UserVocabulary] = Depends(get_user_vocab_storage),
 ) -> FinishEpisodeResponse:
     """Complete an episode — trigger MasteryEvaluator to update FSRS cards.
 
@@ -101,10 +92,19 @@ async def finish_episode(
             detail="No vocabulary data found — upload vocabulary first",
         )
 
-    updated_vocab = evaluator.evaluate(episode_log, user_vocab)
+    if hasattr(evaluator, "evaluate_with_stats"):
+        updated_vocab, updated_count = evaluator.evaluate_with_stats(
+            episode_log, user_vocab
+        )
+    else:
+        updated_vocab = evaluator.evaluate(episode_log, user_vocab)
+        known_item_ids = user_vocab.vocab_index
+        updated_count = len(
+            {wl.item_id for wl in episode_log.word_logs if wl.item_id in known_item_ids}
+        )
     vocab_storage.save(updated_vocab)
 
-    return FinishEpisodeResponse(vocab_updated_count=len(updated_vocab.vocabulary))
+    return FinishEpisodeResponse(vocab_updated_count=updated_count)
 
 
-__all__ = ["router", "get_user_vocabulary_storage"]
+__all__ = ["router", "progress_router"]

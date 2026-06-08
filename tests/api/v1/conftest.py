@@ -16,7 +16,6 @@ import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
-from app.api.v1.reading import get_user_vocabulary_storage as reading_get_vocab_storage
 from app.api.v1.router import router as v1_router
 from app.core.dependencies import (
     get_arc_generation_manager,
@@ -30,7 +29,7 @@ from app.core.dependencies import (
     get_vocabulary_preprocessor,
 )
 from app.models.arc_generation import ArcGenerationState
-from app.models.chapter import ChapterDB
+from app.models.chapter import Chapter, ChapterDB
 from app.models.episode_log import EpisodeReadingLog
 from app.models.fsrs import FsrsCard
 from app.models.progress import ReadingProgress
@@ -42,7 +41,9 @@ from app.models.vocabulary import UserVocabulary, VocabularyItem
 # ---------------------------------------------------------------------------
 
 
-def _make_item(item_id: str, word: str, meaning: str, chapter: int = 1) -> VocabularyItem:
+def _make_item(
+    item_id: str, word: str, meaning: str, chapter: int = 1
+) -> VocabularyItem:
     """Create a minimal VocabularyItem for test data."""
     return VocabularyItem(
         id=item_id,
@@ -86,7 +87,9 @@ class _MockPreprocessor:
     """Mock VocabularyPreprocessor that converts raw items to VocabularyItems."""
 
     @staticmethod
-    def preprocess(raw_items: list[dict[str, str]], user_id: str = "test") -> UserVocabulary:
+    def preprocess(
+        raw_items: list[dict[str, str]], user_id: str = "test"
+    ) -> UserVocabulary:
         """Create a UserVocabulary from raw word-meaning pairs.
 
         Each word gets a VocabularyItem with a generated item_id and
@@ -145,7 +148,9 @@ class _MockReadingTracker:
 class _MockMasteryEvaluator:
     """Mock MasteryEvaluator that returns the input vocab unchanged but counts items."""
 
-    def evaluate(self, episode_log: EpisodeReadingLog, user_vocab: UserVocabulary) -> UserVocabulary:
+    def evaluate(
+        self, episode_log: EpisodeReadingLog, user_vocab: UserVocabulary
+    ) -> UserVocabulary:
         return user_vocab
 
 
@@ -163,7 +168,9 @@ class _MockEcdictDb(sqlite3.Connection):
         self._setup_schema()
 
     def _setup_schema(self) -> None:
-        self.execute("CREATE TABLE dict (word TEXT PRIMARY KEY, translation TEXT, exchange TEXT)")
+        self.execute(
+            "CREATE TABLE dict (word TEXT PRIMARY KEY, translation TEXT, exchange TEXT)"
+        )
         self.execute("INSERT INTO dict VALUES ('test', '测试', '')")
         self.execute("INSERT INTO dict VALUES ('bank', '银行;河岸', '')")
         self.commit()
@@ -189,12 +196,15 @@ class _MockArcGenerationManager:
         self._busy = False
         self._generate_calls: list[dict] = []
 
-    async def start_generation(self, arc_id: str | None = None, user_id: str = "default", **kwargs: object) -> dict:
+    async def start_generation(
+        self, arc_id: str | None = None, user_id: str = "default", **kwargs: object
+    ) -> dict:
         if self._busy:
             from app.core.exceptions import GenerationConflictError
+
             raise GenerationConflictError("Already generating")
         self._busy = True
-        self._generate_calls.append({"arc_id": arc_id, "user_id": user_id})
+        self._generate_calls.append({"arc_id": arc_id, "user_id": user_id, **kwargs})
         return {"job_id": "test_job_001", "status": "queued"}
 
     async def get_status(self) -> ArcGenerationState:
@@ -267,9 +277,6 @@ def test_app(
     app.dependency_overrides[get_user_vocab_storage] = lambda: mock_storage
     app.dependency_overrides[get_vocabulary_preprocessor] = lambda: mock_preprocessor
 
-    # Override reading module's own storage stub
-    app.dependency_overrides[reading_get_vocab_storage] = lambda: mock_storage
-
     # Override reading dependencies
     app.dependency_overrides[get_reading_tracker] = lambda: mock_reading_tracker
     app.dependency_overrides[get_mastery_evaluator] = lambda: mock_mastery_evaluator
@@ -281,17 +288,36 @@ def test_app(
     app.dependency_overrides[get_arc_generation_manager] = lambda: mock_arc_manager
 
     # Override progress and user_vocab used by arc generate route
-    app.dependency_overrides[get_user_vocab] = lambda: UserVocabulary(user_id="test", vocabulary=[])
+    app.dependency_overrides[get_user_vocab] = lambda: UserVocabulary(
+        user_id="test", vocabulary=[]
+    )
     app.dependency_overrides[get_progress] = lambda: ReadingProgress(
         current_chapter=1,
         current_episode=1,
         chapter_offset=0.0,
         total_episodes_read=0,
     )
+
     # Override chapter DB used by arc generate route
     class _MockChapterStorage:
-        def load(self): return ChapterDB(chapters=[])
-        def save(self, _): pass
+        def load(self):
+            return ChapterDB(
+                chapters=[
+                    Chapter(
+                        chapter_id=1,
+                        title="Chapter 1",
+                        raw_text="This is enough text for a mocked chapter.",
+                        summary="A mocked chapter.",
+                        characters=[],
+                        world_setting="Test",
+                        estimated_reading_time=1,
+                    )
+                ]
+            )
+
+        def save(self, _):
+            pass
+
     app.dependency_overrides[get_chapter_db_storage] = lambda: _MockChapterStorage()
 
     app.include_router(v1_router, prefix="/api/v1")

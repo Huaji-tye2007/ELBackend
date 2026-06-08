@@ -31,6 +31,21 @@ async def test_arc_generate(client: AsyncClient) -> None:
 
 
 @pytest.mark.anyio
+async def test_arc_generate_passes_chapter_list(
+    client: AsyncClient, mock_arc_manager: _MockArcGenerationManager
+) -> None:
+    """POST /arc/generate should pass list[Chapter], not ChapterDB, to the manager."""
+    response = await client.post("/api/v1/arc/generate", json={})
+
+    assert response.status_code == 200
+    call = mock_arc_manager._generate_calls[-1]
+    chapters = call["chapters"]
+    assert isinstance(chapters, list)
+    assert chapters
+    assert hasattr(chapters[0], "chapter_id")
+
+
+@pytest.mark.anyio
 async def test_arc_generate_with_custom_id(client: AsyncClient) -> None:
     """POST /arc/generate with arc_id should queue successfully."""
     payload = {"arc_id": "my_custom_arc"}
@@ -74,3 +89,5 @@ async def test_arc_status(client: AsyncClient) -> None:
     assert "phase" in data
     assert "progress" in data
     assert "retry_count" in data
+    assert "elapsed_seconds" in data
+    assert "estimated_remaining_seconds" in data

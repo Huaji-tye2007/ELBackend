@@ -6,7 +6,7 @@ Ref: AGENTS.md §12 (ArcGenerationState) and §14 (Async Architecture).
 import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, field_serializer, field_validator
+from pydantic import BaseModel, Field, computed_field, field_serializer, field_validator
 
 # Eight phases of the Arc generation state machine.
 Phase = Literal[
@@ -80,13 +80,19 @@ class ArcGenerationState(BaseModel):
 
     # ── Computed fields ──────────────────────────────────────────────
 
+    @computed_field
     @property
     def elapsed_seconds(self) -> int:
         """Seconds elapsed since generation started."""
         if self.started_at is None:
             return 0
-        return int((datetime.datetime.now(datetime.timezone.utc) - self.started_at).total_seconds())
+        return int(
+            (
+                datetime.datetime.now(datetime.timezone.utc) - self.started_at
+            ).total_seconds()
+        )
 
+    @computed_field
     @property
     def estimated_remaining_seconds(self) -> int:
         """Estimated remaining seconds based on current progress."""
